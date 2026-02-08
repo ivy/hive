@@ -28,6 +28,7 @@ type RunOpts struct {
 	Env []string
 
 	// APIKey is the Anthropic API key passed to the agent.
+	// Optional — if empty, the agent authenticates via ~/.claude/ (subscription auth).
 	APIKey string
 }
 

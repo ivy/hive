@@ -222,7 +222,7 @@ var _ = Describe("Jail", func() {
 				Expect(bootstrap).To(ContainSubstring(`MISE_TRUSTED_CONFIG_PATHS="/tmp/hive/ws-123"`))
 			})
 
-			It("exports the API key", func() {
+			It("exports the API key when set", func() {
 				Expect(bootstrap).To(ContainSubstring(`ANTHROPIC_API_KEY="sk-ant-test-key"`))
 			})
 
@@ -237,6 +237,19 @@ var _ = Describe("Jail", func() {
 
 			It("execs the command", func() {
 				Expect(bootstrap).To(ContainSubstring(`exec 'claude' '-p' '--model' 'sonnet'`))
+			})
+		})
+
+		Context("when APIKey is empty (subscription auth)", func() {
+			BeforeEach(func() {
+				opts.APIKey = ""
+				err := j.Run(context.Background(), opts)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("does not export ANTHROPIC_API_KEY", func() {
+				bootstrap := c.args[len(c.args)-1]
+				Expect(bootstrap).NotTo(ContainSubstring("ANTHROPIC_API_KEY"))
 			})
 		})
 	})

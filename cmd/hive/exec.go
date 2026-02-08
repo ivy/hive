@@ -49,11 +49,8 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Get API key
+	// API key is optional — subscription auth uses ~/.claude/ instead
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("ANTHROPIC_API_KEY not set")
-	}
 
 	// Get jail backend from config
 	backend := viper.GetString("jail.backend")

@@ -74,8 +74,10 @@ gh project field-list <project-number> --owner @me
 ### Environment
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."   # required for exec
+export ANTHROPIC_API_KEY="sk-ant-..."   # optional — for API key auth
 ```
+
+If `ANTHROPIC_API_KEY` is not set, the agent authenticates via `~/.claude/` (Claude Code subscription auth).
 
 ## Usage
 

@@ -57,8 +57,10 @@ func buildBootstrap(home string, opts RunOpts) string {
 	b.WriteString("export MISE_YES=1\n")
 	fmt.Fprintf(&b, "export MISE_TRUSTED_CONFIG_PATHS=%q\n", opts.Workspace.Path)
 
-	// API key
-	fmt.Fprintf(&b, "export ANTHROPIC_API_KEY=%q\n", opts.APIKey)
+	// API key (optional — subscription auth uses ~/.claude/ instead)
+	if opts.APIKey != "" {
+		fmt.Fprintf(&b, "export ANTHROPIC_API_KEY=%q\n", opts.APIKey)
+	}
 
 	// Additional env
 	for _, env := range opts.Env {
