@@ -3,7 +3,7 @@ status: accepted
 date: 2026-02-07
 ---
 
-# Core tech stack: cobra, viper, slog, os/exec
+# Core tech stack: cobra, viper, slog, ginkgo, os/exec
 
 ## Context and Problem Statement
 
@@ -24,7 +24,7 @@ Hive is a greenfield Go CLI with a validated shell prototype. It needs a CLI fra
 
 ## Decision Outcome
 
-Chosen option: **cobra + pflag + viper + slog + systemd/slog-journal**, because it covers known requirements (8 CLI commands, per-repo config files, structured journald logging) with four well-maintained dependencies and no speculative additions.
+Chosen option: **cobra + pflag + viper + slog + systemd/slog-journal + ginkgo/gomega**, because it covers known requirements (8 CLI commands, per-repo config files, structured journald logging, BDD specs as living documentation) with six well-maintained dependencies and no speculative additions.
 
 ### External dependencies
 
@@ -34,6 +34,8 @@ Chosen option: **cobra + pflag + viper + slog + systemd/slog-journal**, because 
 | `github.com/spf13/pflag` | POSIX flag parsing (cobra dependency) |
 | `github.com/spf13/viper` | Per-repo `.hive.toml` and global config |
 | `github.com/systemd/slog-journal` | slog handler writing structured fields to journald |
+| `github.com/onsi/ginkgo/v2` | BDD test framework — specs double as living requirements docs |
+| `github.com/onsi/gomega` | Expressive matchers for Ginkgo specs |
 
 ### Standard library usage
 
@@ -43,11 +45,11 @@ Chosen option: **cobra + pflag + viper + slog + systemd/slog-journal**, because 
 | GitHub | `gh` CLI via `os/exec` |
 | Sandbox | `systemd-run` / `podman` via `os/exec` |
 | tmux | `tmux` via `os/exec` |
-| Testing | `testing` package |
+| Testing | Ginkgo/Gomega (BDD) bootstrapped via `testing` package |
 
 ### Consequences
 
-- **Good**: four external dependencies for the entire project — small supply chain surface
+- **Good**: six external dependencies for the entire project — small supply chain surface
 - **Good**: slog is stdlib with a universal handler interface; journald handler is maintained by the systemd project
 - **Good**: viper reads `.hive.toml` per-repo, enabling jail backend selection and future per-repo settings without code changes
 - **Good**: `os/exec` for external tools maintains host parity and avoids SDK version drift

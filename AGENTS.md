@@ -61,17 +61,19 @@ Additional commands: `list`, `attach`, `cleanup` — see `docs/architecture.md`.
 | Logging | `log/slog` + `systemd/slog-journal` |
 | GitHub | `gh` CLI via `os/exec` |
 | Sandbox | `systemd-run` via `os/exec` (behind `Jail` interface) |
-| Testing | stdlib `testing` |
+| Testing | Ginkgo/Gomega (BDD) |
 
 See `docs/adrs/002-tech-stack.md` for rationale.
 
 ## How to Work Here
 
 ```bash
-go test ./...       # run tests
+go test ./...       # run all specs (Ginkgo BDD via go test)
 go vet ./...        # static analysis
 go build ./...      # build
 ```
+
+Specs use Ginkgo/Gomega BDD style (`Describe`/`Context`/`It`). Write specs that read like requirements — agents use them to understand expected behavior.
 
 Tool versions managed by mise — see `.mise.toml` (when created).
 
