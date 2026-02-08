@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# dotfiles-work-on — spawn a sandboxed Claude agent to implement an issue
+#
+# Creates a git worktree, writes a prompt, and launches Claude Code headless
+# inside a systemd-run sandbox. All work happens in the worktree so the main
+# checkout stays clean. Run multiple times to iterate.
+#
+# The session ID is saved so you can resume with reviewer feedback later.
+#
+# Usage:
+#   bin/dotfiles-work-on <prompt-file>
+#   bin/dotfiles-work-on --resume <worktree-dir> "fix the test assertion"
+#   bin/dotfiles-work-on --cleanup
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+WORKTREE_PREFIX="/tmp/dotfiles-sandbox"
+
+# --- helpers ---
+
+die() { echo "error: $*" >&2; exit 1; }
+
+cleanup_worktrees() {
+    echo "Cleaning up sandbox worktrees..."
+    for wt in "$WORKTREE_PREFIX"-*; do
+        [[ -d "$wt" ]] || continue
+        branch=$(git -C "$wt" branch --show-current 2>/dev/null || true)
+        echo "  removing $wt"
+        git -C "$REPO_DIR" worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt"
+        [[ -n "$branch" ]] && git -C "$REPO_DIR" branch -D "$branch" 2>/dev/null || true
+    done
+    git -C "$REPO_DIR" worktree prune
+    echo "Done."
+}
+
+run_in_sandbox() {
+    local worktree_dir="$1"
+    shift
+    # Remaining args are the claude command
+
+    local chezmoi_config="$HOME/.config/chezmoi/chezmoi.toml"
+
+    systemd-run --user --pty \
+        -p "TemporaryFileSystem=$HOME:mode=0755" \
+        -p "ProtectSystem=strict" \
+        -p "PrivateTmp=yes" \
+        -p "NoNewPrivileges=yes" \
+        -p "BindPaths=$worktree_dir" \
+        -p "BindPaths=$REPO_DIR/.git" \
+        -p "BindPaths=$HOME/.claude" \
+        -p "BindReadOnlyPaths=$chezmoi_config:$HOME/.chezmoi.toml.src" \
+        -p "BindReadOnlyPaths=$HOME/.local/bin" \
+        -p "BindReadOnlyPaths=$HOME/.local/share/mise" \
+        -p "BindReadOnlyPaths=$HOME/.local/share/claude" \
+        -- /bin/bash -c '
+# Bootstrap ephemeral home
+mkdir -p "$HOME/.config/chezmoi"
+cp "$HOME/.chezmoi.toml.src" "$HOME/.config/chezmoi/chezmoi.toml"
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+
+# Point chezmoi at the worktree
+sed -i "s|sourceDir = .*|sourceDir = \"'"$worktree_dir"'\"|" \
+    "$HOME/.config/chezmoi/chezmoi.toml"
+
+# Git identity for commits (no credential helpers)
+git config --global user.name "Claude (sandbox)"
+git config --global user.email "claude-sandbox@localhost"
+git config --global init.defaultBranch main
+
+# Trust mise config in the worktree without interactive prompt
+export MISE_YES=1
+export MISE_TRUSTED_CONFIG_PATHS="'"$worktree_dir"'"
+
+cd "'"$worktree_dir"'"
+
+# Run claude with the provided arguments
+exec "$@"
+' -- "$@"
+}
+
+# --- arg parsing ---
+
+if [[ $# -lt 1 ]]; then
+    cat <<'USAGE'
+Usage:
+  dotfiles-work-on <prompt-file>                         # new session
+  dotfiles-work-on --resume <worktree-dir> "feedback"    # continue session
+  dotfiles-work-on --cleanup                             # remove worktrees
+USAGE
+    exit 1
+fi
+
+case "$1" in
+    --cleanup)
+        cleanup_worktrees
+        exit 0
+        ;;
+    --resume)
+        [[ $# -ge 3 ]] || die "usage: $0 --resume <worktree-dir> \"feedback\""
+        WORKTREE_DIR="$2"
+        FEEDBACK="$3"
+        [[ -d "$WORKTREE_DIR" ]] || die "worktree not found: $WORKTREE_DIR"
+
+        SESSION_FILE="$WORKTREE_DIR/.claude-session"
+        [[ -f "$SESSION_FILE" ]] || die "no session file found at $SESSION_FILE"
+        SESSION_ID=$(cat "$SESSION_FILE")
+
+        echo "==> Resuming session $SESSION_ID"
+        echo "    Worktree: $WORKTREE_DIR"
+        echo "    Feedback: $FEEDBACK"
+        echo ""
+
+        run_in_sandbox "$WORKTREE_DIR" \
+            claude -p \
+                --dangerously-skip-permissions \
+                --resume "$SESSION_ID" \
+                --model sonnet \
+                --output-format json \
+                "$FEEDBACK"
+
+        echo ""
+        echo "==> Session resumed. Inspect results:"
+        echo "    cd $WORKTREE_DIR"
+        echo "    git log --oneline main..HEAD"
+        ;;
+    *)
+        PROMPT_FILE="$1"
+        [[ -f "$PROMPT_FILE" ]] || die "prompt file not found: $PROMPT_FILE"
+
+        # Create worktree
+        TIMESTAMP=$(date +%s)
+        WORKTREE_DIR="${WORKTREE_PREFIX}-${TIMESTAMP}"
+        BRANCH_NAME="sandbox/work-${TIMESTAMP}"
+        SESSION_ID=$(uuidgen)
+
+        echo "==> Creating worktree at $WORKTREE_DIR (branch: $BRANCH_NAME)"
+        git -C "$REPO_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" main
+
+        # Copy prompt into worktree and save session ID
+        cp "$PROMPT_FILE" "$WORKTREE_DIR/.prompt.md"
+        echo "$SESSION_ID" > "$WORKTREE_DIR/.claude-session"
+
+        echo "==> Launching Claude in sandbox..."
+        echo "    Worktree:   $WORKTREE_DIR"
+        echo "    Session:    $SESSION_ID"
+        echo "    Prompt:     $PROMPT_FILE"
+        echo ""
+
+        run_in_sandbox "$WORKTREE_DIR" \
+            claude -p \
+                --dangerously-skip-permissions \
+                --session-id "$SESSION_ID" \
+                --model sonnet \
+                --output-format json \
+                "$(cat "$PROMPT_FILE")"
+
+        echo ""
+        echo "==> Agent finished"
+        echo ""
+        echo "==> Inspect results:"
+        echo "    cd $WORKTREE_DIR"
+        echo "    git log --oneline main..HEAD"
+        echo "    git diff main..HEAD"
+        echo ""
+        echo "==> Resume with feedback:"
+        echo "    $0 --resume $WORKTREE_DIR \"your feedback here\""
+        echo ""
+        echo "==> Clean up when done:"
+        echo "    $0 --cleanup"
+        ;;
+esac

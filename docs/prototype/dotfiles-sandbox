@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# dotfiles-sandbox — ephemeral sandbox for dotfiles development
+#
+# Runs a command (default: interactive bash) in a systemd-run sandbox where:
+#   - ~/  is a fresh tmpfs (writable, ephemeral)
+#   - The dotfiles repo is bind-mounted (RW, edits persist)
+#   - ~/.claude is bind-mounted (RO)
+#   - System paths are read-only
+#   - No SSH keys, git credentials, or 1Password socket
+#
+# Usage:
+#   bin/dotfiles-sandbox                    # interactive shell
+#   bin/dotfiles-sandbox chezmoi apply      # run a specific command
+#   bin/dotfiles-sandbox claude --dangerously-skip-permissions
+
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+CHEZMOI_CONFIG="$HOME/.config/chezmoi/chezmoi.toml"
+
+# Build the systemd-run command
+cmd=(
+    systemd-run --user --pty
+    -p "TemporaryFileSystem=$HOME:mode=0755"
+    -p "ProtectSystem=strict"
+    -p "PrivateTmp=yes"
+    -p "NoNewPrivileges=yes"
+    # Repo is writable — edits persist on the host
+    -p "BindPaths=$REPO_DIR"
+    # Claude config is read-only
+    -p "BindReadOnlyPaths=$HOME/.claude"
+    # Chezmoi config is copied in at startup (state DB stays ephemeral)
+    -p "BindReadOnlyPaths=$CHEZMOI_CONFIG:$HOME/.chezmoi.toml.src"
+    # mise binary and shims
+    -p "BindReadOnlyPaths=$HOME/.local/bin/mise"
+    -p "BindReadOnlyPaths=$HOME/.local/share/mise"
+    --
+)
+
+# Bootstrap script: set up chezmoi config + PATH, then exec the user's command
+bootstrap='
+mkdir -p "$HOME/.config/chezmoi" "$HOME/.local/bin"
+cp "$HOME/.chezmoi.toml.src" "$HOME/.config/chezmoi/chezmoi.toml"
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+'
+
+if [[ $# -eq 0 ]]; then
+    # Interactive shell
+    "${cmd[@]}" /bin/bash -c "$bootstrap"'exec bash --login'
+else
+    # Run the provided command
+    "${cmd[@]}" /bin/bash -c "$bootstrap"'exec "$@"' -- "$@"
+fi
