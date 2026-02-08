@@ -44,6 +44,19 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	gh.InProgressOptionID = viper.GetString("github.in-progress-option-id")
 	gh.InReviewOptionID = viper.GetString("github.in-review-option-id")
 
+	// Commit uncommitted agent work before pushing
+	hasChanges, err := workspace.HasUncommittedChanges(cmd.Context(), ws)
+	if err != nil {
+		return fmt.Errorf("check uncommitted changes: %w", err)
+	}
+	if hasChanges {
+		slog.Info("agent left uncommitted changes, committing")
+		msg := fmt.Sprintf("feat: implement #%d\n\nAutomated commit by hive — agent exited without committing.", ws.IssueNumber)
+		if err := workspace.CommitAll(cmd.Context(), ws, msg); err != nil {
+			return fmt.Errorf("auto-commit: %w", err)
+		}
+	}
+
 	// Push branch
 	if err := gh.PushBranch(cmd.Context(), ws.RepoPath, ws.Branch); err != nil {
 		return fmt.Errorf("push branch: %w", err)

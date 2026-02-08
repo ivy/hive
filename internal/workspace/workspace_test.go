@@ -374,6 +374,114 @@ var _ = Describe("Workspace", func() {
 		})
 	})
 
+	Describe("HasUncommittedChanges", func() {
+		var ws *workspace.Workspace
+
+		BeforeEach(func() {
+			var err error
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 90)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if ws != nil {
+				os.RemoveAll(ws.Path)
+				cmd := exec.Command("git", "worktree", "prune")
+				cmd.Dir = repoPath
+				_ = cmd.Run()
+				cmd = exec.Command("git", "branch", "-D", ws.Branch)
+				cmd.Dir = repoPath
+				_ = cmd.Run()
+			}
+		})
+
+		It("returns false when no files are changed", func() {
+			has, err := workspace.HasUncommittedChanges(ctx, ws)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(has).To(BeFalse())
+		})
+
+		It("returns true when a tracked file is modified", func() {
+			err := os.WriteFile(filepath.Join(ws.Path, "new-file.txt"), []byte("hello"), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+			has, err := workspace.HasUncommittedChanges(ctx, ws)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(has).To(BeTrue())
+		})
+
+		It("ignores .hive/ metadata files", func() {
+			// .hive/ files are created by Create, but should not count.
+			// Verify that the only untracked files are under .hive/.
+			has, err := workspace.HasUncommittedChanges(ctx, ws)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(has).To(BeFalse())
+		})
+	})
+
+	Describe("CommitAll", func() {
+		var ws *workspace.Workspace
+
+		BeforeEach(func() {
+			var err error
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 91)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if ws != nil {
+				os.RemoveAll(ws.Path)
+				cmd := exec.Command("git", "worktree", "prune")
+				cmd.Dir = repoPath
+				_ = cmd.Run()
+				cmd = exec.Command("git", "branch", "-D", ws.Branch)
+				cmd.Dir = repoPath
+				_ = cmd.Run()
+			}
+		})
+
+		It("commits new files and leaves a clean worktree", func() {
+			err := os.WriteFile(filepath.Join(ws.Path, "change.txt"), []byte("data"), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = workspace.CommitAll(ctx, ws, "test commit")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Worktree should be clean (except .hive/).
+			has, err := workspace.HasUncommittedChanges(ctx, ws)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(has).To(BeFalse())
+
+			// Verify the commit message.
+			cmd := exec.Command("git", "log", "-1", "--format=%s")
+			cmd.Dir = ws.Path
+			out, err := cmd.Output()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(string(out))).To(Equal("test commit"))
+		})
+
+		It("does not commit .hive/ metadata", func() {
+			err := os.WriteFile(filepath.Join(ws.Path, "real-change.txt"), []byte("x"), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = workspace.CommitAll(ctx, ws, "test commit")
+			Expect(err).NotTo(HaveOccurred())
+
+			// .hive/ files should not appear in the commit.
+			cmd := exec.Command("git", "show", "--name-only", "--format=")
+			cmd.Dir = ws.Path
+			out, err := cmd.Output()
+			Expect(err).NotTo(HaveOccurred())
+			for _, line := range strings.Split(string(out), "\n") {
+				Expect(line).NotTo(HavePrefix(".hive/"))
+			}
+		})
+
+		It("returns nil when there is nothing to commit", func() {
+			err := workspace.CommitAll(ctx, ws, "empty commit")
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
 	Describe("ReadSessionID", func() {
 		var ws *workspace.Workspace
 

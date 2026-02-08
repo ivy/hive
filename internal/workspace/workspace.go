@@ -309,3 +309,56 @@ func ReadBoardItemID(ws *Workspace) (string, error) {
 	}
 	return strings.TrimSpace(string(data)), nil
 }
+
+// HasUncommittedChanges returns true if the workspace worktree has
+// modified, deleted, or untracked files (excluding .hive/ metadata).
+func HasUncommittedChanges(ctx context.Context, ws *Workspace) (bool, error) {
+	// Check for staged + unstaged changes.
+	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+	cmd.Dir = ws.Path
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git status: %w", err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Skip .hive/ metadata files — they aren't part of the deliverable.
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && strings.HasPrefix(fields[len(fields)-1], MetaDir+"/") {
+			continue
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+// CommitAll stages all changes (excluding .hive/) and creates a commit
+// with the given message. Returns nil if there is nothing to commit.
+func CommitAll(ctx context.Context, ws *Workspace, message string) error {
+	// Stage everything, then unstage .hive/.
+	cmd := exec.CommandContext(ctx, "git", "add", "-A")
+	cmd.Dir = ws.Path
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add -A: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	cmd = exec.CommandContext(ctx, "git", "reset", "HEAD", "--", MetaDir)
+	cmd.Dir = ws.Path
+	// reset may fail if .hive/ was never tracked — that's fine.
+	_ = cmd.Run()
+
+	cmd = exec.CommandContext(ctx, "git", "commit", "-m", message)
+	cmd.Dir = ws.Path
+	if out, err := cmd.CombinedOutput(); err != nil {
+		outStr := strings.TrimSpace(string(out))
+		// "nothing to commit" / "nothing added to commit" is not an error.
+		if strings.Contains(outStr, "nothing to commit") || strings.Contains(outStr, "nothing added to commit") {
+			return nil
+		}
+		return fmt.Errorf("git commit: %s: %w", outStr, err)
+	}
+	return nil
+}
