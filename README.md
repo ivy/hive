@@ -3,6 +3,11 @@
 Personal agent orchestrator. Turns a GitHub Projects backlog into pull requests
 by dispatching Claude Code agents in isolated workspaces on a home server.
 
+> [!CAUTION]
+> This is an early experiment — built for personal use on a single home server.
+> APIs, config formats, and workspace conventions will change without notice.
+> Not recommended for production use.
+
 ## How It Works
 
 ```
