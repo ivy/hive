@@ -31,6 +31,7 @@ If a project *wants* to customize behavior (e.g., run a setup step after worktre
 ### 3. Credentials Are the Threat Model
 
 The sandbox exists to prevent an agent from:
+
 - Opening a PR on the wrong repo
 - Pushing to a remote
 - Reading SSH keys, API tokens, or auth cookies
@@ -41,6 +42,7 @@ It does *not* defend against malicious code execution, kernel exploits, or netwo
 ### 4. Sessions Are First-Class
 
 The review cycle is: run → inspect → resume with feedback → inspect → repeat. Session persistence is not optional. The tool must:
+
 - Generate and pin a session ID per worktree
 - Save it alongside the worktree
 - Support resuming with a new prompt that has full prior context
@@ -82,6 +84,7 @@ Creates, lists, and removes git worktrees in a known location.
 ```
 
 **Worktree lifecycle:**
+
 1. `git worktree add -b work-on/<timestamp> <path> <default-branch>`
 2. Agent works in the worktree
 3. Human inspects with `git log`, `git diff`
@@ -110,6 +113,7 @@ Provides the execution environment. On Linux, this is `systemd-run`. The interfa
 | `~/.1password` | -- | Hidden |
 
 **Bootstrap steps (run inside sandbox before claude):**
+
 1. `mkdir -p ~/.config/chezmoi` (or equivalent project setup)
 2. Set `PATH` to include mise shims and local bin
 3. Configure minimal git identity (name + email, no credential helpers)
@@ -122,6 +126,7 @@ Tracks the mapping between worktrees and Claude Code sessions.
 **Storage:** A single file in the worktree (`.work-on-session`) containing the session UUID. No external database, no state directory.
 
 **Operations:**
+
 - `new`: Generate UUID, pass to `claude --session-id <uuid>`
 - `resume`: Read UUID from worktree, pass to `claude --resume <uuid>`
 
@@ -149,6 +154,7 @@ work-on --version                  Print version
 ### Output
 
 Default output is the JSON result from `claude -p --output-format json`, which includes:
+
 - `session_id` — for resuming
 - `total_cost_usd` — what the run cost
 - `num_turns` — how many tool-use cycles
@@ -156,6 +162,7 @@ Default output is the JSON result from `claude -p --output-format json`, which i
 - `result` — Claude's final text summary
 
 The tool also prints human-readable instructions:
+
 ```
 ==> Agent finished ($0.45, 14 turns, 70s)
 ==> Inspect:  cd /tmp/work-on-kb-1770529040

@@ -78,6 +78,7 @@ git worktree add -b sandbox/work-<timestamp> /tmp/dotfiles-sandbox-<timestamp> m
 ```
 
 **Why worktrees instead of clones:**
+
 - Shares the object store with the main repo (fast, no network)
 - Branch is visible from the main checkout for cherry-picking
 - Cleanup is `git worktree remove` + `git branch -D`
@@ -129,6 +130,7 @@ dotfiles-work-on --resume /tmp/dotfiles-sandbox-<ts> "fix the test assertion"
 | Model | Sonnet | Sonnet |
 
 The agent:
+
 1. Read the existing git config template and test patterns
 2. Added `[fetch]\n\tprune = true` in the correct location
 3. Created `test/git-config.bats` following established patterns
