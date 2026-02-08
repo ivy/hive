@@ -40,13 +40,8 @@ type projectItemListResponse struct {
 type projectItem struct {
 	ID      string             `json:"id"`
 	Title   string             `json:"title"`
-	Status  projectItemStatus  `json:"status"`
+	Status  string             `json:"status"`
 	Content projectItemContent `json:"content"`
-}
-
-// projectItemStatus holds the status name for a project item.
-type projectItemStatus struct {
-	Name string `json:"name"`
 }
 
 // projectItemContent holds nested content fields (number, repository, type).

@@ -60,14 +60,14 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	slog.Info("created PR", "url", pr.URL)
 
 	// Move board item to In Review
-	projectID := viper.GetString("github.project-id")
-	if projectID != "" {
+	projectNodeID := viper.GetString("github.project-node-id")
+	if projectNodeID != "" {
 		itemIDBytes, err := os.ReadFile(filepath.Join(ws.Path, ".hive", "board-item-id"))
 		if err != nil {
 			slog.Warn("no board item ID found, skipping board update")
 		} else {
 			itemID := strings.TrimSpace(string(itemIDBytes))
-			if err := gh.MoveToInReview(cmd.Context(), projectID, itemID); err != nil {
+			if err := gh.MoveToInReview(cmd.Context(), projectNodeID, itemID); err != nil {
 				slog.Warn("could not move board item to In Review", "error", err)
 			}
 		}

@@ -33,6 +33,8 @@ func runPoll(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("github client: %w", err)
 	}
+	gh.StatusFieldID = viper.GetString("github.status-field-id")
+	gh.InProgressOptionID = viper.GetString("github.in-progress-option-id")
 
 	slog.Info("polling for ready items", "project", projectID)
 
@@ -46,6 +48,11 @@ func runPoll(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	projectNodeID := viper.GetString("github.project-node-id")
+	if projectNodeID == "" {
+		return fmt.Errorf("github.project-node-id not configured (set in .hive.toml)")
+	}
+
 	slog.Info("found ready items", "count", len(items))
 
 	for _, item := range items {
@@ -57,14 +64,14 @@ func runPoll(cmd *cobra.Command, args []string) error {
 		slog.Info("dispatching run", "title", item.Title, "repo", item.Repo, "issue", item.Number)
 
 		// Move to In Progress
-		if err := gh.MoveToInProgress(cmd.Context(), projectID, item.ID); err != nil {
+		if err := gh.MoveToInProgress(cmd.Context(), projectNodeID, item.ID); err != nil {
 			slog.Error("failed to move to In Progress", "error", err, "item", item.Title)
 			continue
 		}
 
 		// Dispatch hive run in background
 		ref := fmt.Sprintf("%s#%d", item.Repo, item.Number)
-		hiveCmd := exec.CommandContext(cmd.Context(), os.Args[0], "run", ref)
+		hiveCmd := exec.CommandContext(cmd.Context(), os.Args[0], "run", "--board-item-id", item.ID, ref)
 		hiveCmd.Stdout = os.Stdout
 		hiveCmd.Stderr = os.Stderr
 		if err := hiveCmd.Start(); err != nil {

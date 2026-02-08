@@ -74,7 +74,7 @@ func (c *Client) ReadyItems(ctx context.Context, projectID string) ([]BoardItem,
 	}
 	var items []BoardItem
 	for _, pi := range resp.Items {
-		if !strings.Contains(pi.Status.Name, "Ready") {
+		if !strings.Contains(pi.Status, "Ready") {
 			continue
 		}
 		items = append(items, BoardItem{
@@ -82,7 +82,7 @@ func (c *Client) ReadyItems(ctx context.Context, projectID string) ([]BoardItem,
 			Title:   pi.Title,
 			Number:  pi.Content.Number,
 			Repo:    pi.Content.Repository,
-			Status:  pi.Status.Name,
+			Status:  pi.Status,
 			IsDraft: pi.Content.Type == "DraftIssue",
 			Type:    pi.Content.Type,
 		})

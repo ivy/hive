@@ -20,12 +20,14 @@ var runCmd = &cobra.Command{
 func init() {
 	runCmd.Flags().Bool("no-publish", false, "skip the publish step")
 	runCmd.Flags().String("model", "sonnet", "Claude model to use")
+	runCmd.Flags().String("board-item-id", "", "GitHub Projects board item ID")
 	rootCmd.AddCommand(runCmd)
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
 	noPublish, _ := cmd.Flags().GetBool("no-publish")
 	model, _ := cmd.Flags().GetString("model")
+	boardItemID, _ := cmd.Flags().GetString("board-item-id")
 
 	slog.Info("running full pipeline", "ref", args[0])
 
@@ -45,6 +47,13 @@ func runRun(cmd *cobra.Command, args []string) error {
 	ws, err := findLatestWorkspace(cmd.Context(), repo, issueNumber)
 	if err != nil {
 		return fmt.Errorf("find workspace: %w", err)
+	}
+
+	// Write board item ID if provided (needed by publish to update board status)
+	if boardItemID != "" {
+		if err := workspace.WriteBoardItemID(ws, boardItemID); err != nil {
+			return fmt.Errorf("write board item ID: %w", err)
+		}
 	}
 
 	// Phase 2: Exec

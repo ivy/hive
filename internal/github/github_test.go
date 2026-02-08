@@ -110,9 +110,9 @@ var _ = Describe("Client", func() {
 	Describe("ReadyItems", func() {
 		It("filters for items with Ready status", func() {
 			resp := `{"items":[
-				{"id":"PVTI_abc","title":"feat: something","status":{"name":"Ready 🤖"},"content":{"number":143,"repository":"ivy/dotfiles","type":"Issue"}},
-				{"id":"PVTI_def","title":"fix: other","status":{"name":"In Progress"},"content":{"number":200,"repository":"ivy/hive","type":"Issue"}},
-				{"id":"PVTI_ghi","title":"chore: ready thing","status":{"name":"Ready 🤖"},"content":{"number":50,"repository":"ivy/scripts","type":"Issue"}}
+				{"id":"PVTI_abc","title":"feat: something","status":"Ready 🤖","content":{"number":143,"repository":"ivy/dotfiles","type":"Issue"}},
+				{"id":"PVTI_def","title":"fix: other","status":"In Progress","content":{"number":200,"repository":"ivy/hive","type":"Issue"}},
+				{"id":"PVTI_ghi","title":"chore: ready thing","status":"Ready 🤖","content":{"number":50,"repository":"ivy/scripts","type":"Issue"}}
 			]}`
 			client := github.NewClientWithRunner(fakeRunner(resp, 0))
 
@@ -130,7 +130,7 @@ var _ = Describe("Client", func() {
 		})
 
 		It("returns empty slice when no items are ready", func() {
-			resp := `{"items":[{"id":"PVTI_def","title":"fix: other","status":{"name":"In Progress"},"content":{"number":200,"repository":"ivy/hive","type":"Issue"}}]}`
+			resp := `{"items":[{"id":"PVTI_def","title":"fix: other","status":"In Progress","content":{"number":200,"repository":"ivy/hive","type":"Issue"}}]}`
 			client := github.NewClientWithRunner(fakeRunner(resp, 0))
 
 			items, err := client.ReadyItems(ctx, "42")
