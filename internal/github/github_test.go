@@ -25,6 +25,20 @@ func fakeRunner(output string, exitCode int) github.CommandRunner {
 	}
 }
 
+// sequenceRunner returns a CommandRunner that returns different outputs
+// for successive calls. Panics if called more times than outputs provided.
+func sequenceRunner(outputs []string, exitCodes []int) github.CommandRunner {
+	idx := 0
+	return func(name string, args ...string) *exec.Cmd {
+		i := idx
+		idx++
+		script := fmt.Sprintf("printf '%%s' \"$FAKE_OUTPUT\"; exit %d", exitCodes[i])
+		cmd := exec.Command("sh", "-c", script)
+		cmd.Env = append(cmd.Environ(), "FAKE_OUTPUT="+outputs[i])
+		return cmd
+	}
+}
+
 // recordingRunner captures the command name and args for assertion,
 // then delegates to an inner runner for output.
 type recordingRunner struct {
@@ -261,9 +275,11 @@ var _ = Describe("Client", func() {
 	})
 
 	Describe("CreatePR", func() {
-		It("parses a valid PR response", func() {
+		It("creates a PR and returns parsed details from view", func() {
+			prURL := "https://github.com/ivy/dotfiles/pull/42"
 			prJSON := `{"number":42,"title":"feat(hooks): allow bypassing","url":"https://github.com/ivy/dotfiles/pull/42","headRefName":"hive/dotfiles-143-1738900000"}`
-			client := github.NewClientWithRunner(fakeRunner(prJSON, 0))
+			runner := sequenceRunner([]string{prURL, prJSON}, []int{0, 0})
+			client := github.NewClientWithRunner(runner)
 
 			pr, err := client.CreatePR(ctx, "ivy/dotfiles", "hive/dotfiles-143-1738900000", "feat(hooks): allow bypassing", "PR body")
 			Expect(err).NotTo(HaveOccurred())
@@ -273,34 +289,40 @@ var _ = Describe("Client", func() {
 			Expect(pr.Branch).To(Equal("hive/dotfiles-143-1738900000"))
 		})
 
-		It("passes the correct arguments to gh", func() {
+		It("passes the correct arguments to gh create and view", func() {
+			prURL := "https://github.com/ivy/dotfiles/pull/42"
 			prJSON := `{"number":42,"title":"t","url":"u","headRefName":"b"}`
-			rec := &recordingRunner{inner: fakeRunner(prJSON, 0)}
+			inner := sequenceRunner([]string{prURL, prJSON}, []int{0, 0})
+			rec := &recordingRunner{inner: inner}
 			client := github.NewClientWithRunner(rec.run)
 
 			_, err := client.CreatePR(ctx, "ivy/dotfiles", "hive/dotfiles-143", "the title", "the body")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(rec.calls).To(HaveLen(1))
+			Expect(rec.calls).To(HaveLen(2))
 			Expect(rec.calls[0]).To(Equal([]string{
 				"gh", "pr", "create",
 				"--repo", "ivy/dotfiles",
 				"--head", "hive/dotfiles-143",
 				"--title", "the title",
 				"--body", "the body",
+			}))
+			Expect(rec.calls[1]).To(Equal([]string{
+				"gh", "pr", "view", prURL,
 				"--json", "number,title,url,headRefName",
 			}))
 		})
 
-		It("returns an error when gh fails", func() {
-			client := github.NewClientWithRunner(fakeRunner("", 1))
+		It("returns an error when gh pr create fails", func() {
+			client := github.NewClientWithRunner(fakeRunner("some error", 1))
 
 			_, err := client.CreatePR(ctx, "ivy/dotfiles", "branch", "title", "body")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("gh pr create"))
 		})
 
-		It("returns an error for invalid JSON", func() {
-			client := github.NewClientWithRunner(fakeRunner("not json", 0))
+		It("returns an error for invalid JSON from pr view", func() {
+			runner := sequenceRunner([]string{"https://github.com/ivy/dotfiles/pull/1", "not json"}, []int{0, 0})
+			client := github.NewClientWithRunner(runner)
 
 			_, err := client.CreatePR(ctx, "ivy/dotfiles", "branch", "title", "body")
 			Expect(err).To(HaveOccurred())

@@ -122,18 +122,29 @@ func (c *Client) PushBranch(ctx context.Context, repoPath string, branch string)
 	return nil
 }
 
-// CreatePR opens a pull request via gh pr create.
+// CreatePR opens a pull request via gh pr create, then fetches its
+// details with gh pr view --json.
 func (c *Client) CreatePR(ctx context.Context, repo string, branch string, title string, body string) (*PR, error) {
 	cmd := c.runner("gh", "pr", "create",
 		"--repo", repo,
 		"--head", branch,
 		"--title", title,
 		"--body", body,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh pr create: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	// gh pr create outputs the PR URL on success. Use gh pr view to get
+	// structured JSON.
+	prURL := strings.TrimSpace(string(out))
+	cmd = c.runner("gh", "pr", "view", prURL,
 		"--json", "number,title,url,headRefName",
 	)
-	out, err := cmd.Output()
+	out, err = cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("gh pr create: %w", err)
+		return nil, fmt.Errorf("gh pr view: %w", err)
 	}
 	var pr PR
 	if err := json.Unmarshal(out, &pr); err != nil {
