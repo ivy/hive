@@ -17,7 +17,10 @@ local linters = new Mapping<String, Step|Group> {
 
   // Go
   ["go-imports"] = Builtins.go_imports
-  ["go-vet"] = Builtins.go_vet
+  ["go-vet"] = (Builtins.go_vet) {
+    glob = "**/*.go"
+    check = "go vet ./..."
+  }
   ["go-sec"] = (Builtins.go_sec) {
     profiles = List("slow")
   }
