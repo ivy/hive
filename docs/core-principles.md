@@ -26,11 +26,13 @@ When a new capability is needed, the question is "which component owns this?" �
 
 **Says no to**: A monolithic `run` that can't be decomposed. Components that reach into each other's concerns. "Just add it to exec, it's easier."
 
-## 4. Host Parity
+## 4. Environment Parity
 
-The agent's execution environment has the same tools as the host — exact versions, same binaries. The sandbox inherits the host's tools by running on the host kernel with read-only access to system paths. No tool installation, no image rebuilds, no version drift.
+The agent's execution environment matches the environment the work targets. For repos developed directly on the host, the sandbox inherits the host's tools — exact versions, same binaries, read-only access to system paths. For repos whose work targets a container or managed environment, the sandbox runs in a matching container image.
 
-**Says no to**: Container images that approximate the host. Maintaining a separate toolchain for sandboxed execution. "It works on the host but not in the sandbox."
+The jail backend is selected per-repo. The interface is the same regardless of backend. The rest of Hive doesn't know or care whether the agent ran under `systemd-run` or in a Podman container.
+
+**Says no to**: One-size-fits-all sandboxing. Approximating an environment when you can match it exactly. Agents that install tools at runtime. Jail selection that requires code changes instead of configuration.
 
 ## 5. Resumability
 
