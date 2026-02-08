@@ -1,0 +1,48 @@
+amends "package://github.com/jdx/hk/releases/download/v1.35.0/hk@1.35.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.35.0/hk@1.35.0#/Builtins.pkl"
+
+local linters = new Mapping<String, Step|Group> {
+  // Essential
+  ["check-merge-conflict"] = Builtins.check_merge_conflict
+  ["check-executables-have-shebangs"] = Builtins.check_executables_have_shebangs
+  ["check-symlinks"] = Builtins.check_symlinks
+  ["detect-private-key"] = Builtins.detect_private_key
+  ["mixed-line-ending"] = Builtins.mixed_line_ending
+  ["trailing-whitespace"] = Builtins.trailing_whitespace
+  ["newlines"] = Builtins.newlines
+  ["editorconfig-checker"] = Builtins.editorconfig_checker
+  ["jq"] = Builtins.jq
+  ["markdown-lint"] = Builtins.markdown_lint
+  ["mise"] = Builtins.mise
+
+  // Go
+  ["go-imports"] = Builtins.go_imports
+  ["go-vet"] = Builtins.go_vet
+  ["go-sec"] = (Builtins.go_sec) {
+    profiles = List("slow")
+  }
+  ["gomod-tidy"] = Builtins.gomod_tidy
+}
+
+hooks = new {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps = linters
+  }
+  ["pre-push"] {
+    steps = linters
+  }
+  ["check"] {
+    steps = linters
+  }
+  ["fix"] {
+    fix = true
+    steps = linters
+  }
+  ["commit-msg"] {
+    steps {
+      ["check-conventional-commit"] = Builtins.check_conventional_commit
+    }
+  }
+}
