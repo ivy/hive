@@ -20,6 +20,31 @@ In Review 👀 ←────── push branch, open PR
 4. Hive pushes the branch and opens a PR
 5. You review when ready
 
+## Quick Start
+
+```bash
+# 1. Build
+go build -o hive ./cmd/hive/
+
+# 2. Ensure target repos are cloned at the expected path
+#    ivy/dotfiles#143 → ~/src/github.com/ivy/dotfiles/
+ls ~/src/github.com/ivy/dotfiles
+
+# 3. Look up your project board field IDs
+gh project field-list 10 --owner @me
+
+# 4. Create .hive.toml with the IDs from step 3
+cat .hive.toml
+
+# 5. Run a single issue end-to-end (prepare → exec → publish)
+./hive run ivy/dotfiles#143
+
+# 6. Or poll the board to process all Ready items
+./hive poll
+```
+
+See [Setup](#setup) for details on each step.
+
 ## Requirements
 
 - Linux with systemd (process-level sandboxing via `systemd-run`)
@@ -65,11 +90,15 @@ in-review-option-id = "47fc9ee4"               # "In Review" option ID
 To find your project field IDs:
 
 ```bash
-# List project fields
-gh project field-list <project-number> --owner @me
+# List fields — look for "Status" and note its ID (PVTSSF_...)
+gh project field-list 10 --owner @me
 
-# The status field and its options will show IDs you need
+# List option IDs for each status column
+gh project field-list 10 --owner @me --format json | jq '.fields[] | select(.name=="Status")'
 ```
+
+The output gives you `id` for the status field, and each option's `id` for
+"In Progress" and "In Review".
 
 ### Environment
 
