@@ -30,3 +30,28 @@ type BoardItem struct {
 	IsDraft bool   `json:"isDraft"`
 	Type    string `json:"type"`
 }
+
+// projectItemListResponse is the top-level JSON from gh project item-list --format json.
+type projectItemListResponse struct {
+	Items []projectItem `json:"items"`
+}
+
+// projectItem is a single item in the gh project item-list response.
+type projectItem struct {
+	ID      string             `json:"id"`
+	Title   string             `json:"title"`
+	Status  projectItemStatus  `json:"status"`
+	Content projectItemContent `json:"content"`
+}
+
+// projectItemStatus holds the status name for a project item.
+type projectItemStatus struct {
+	Name string `json:"name"`
+}
+
+// projectItemContent holds nested content fields (number, repository, type).
+type projectItemContent struct {
+	Number     int    `json:"number"`
+	Repository string `json:"repository"`
+	Type       string `json:"type"`
+}

@@ -41,6 +41,17 @@ type Jail interface {
 // New creates a Jail for the given backend name.
 // Supported backends: "systemd-run".
 func New(backend string) (Jail, error) {
-	_ = backend
-	return nil, fmt.Errorf("not implemented")
+	return NewWithRunner(backend, exec.Command)
+}
+
+// NewWithRunner creates a Jail for the given backend with a custom
+// CommandRunner. This is the primary constructor for testing — inject
+// a recording runner to capture the command without invoking systemd-run.
+func NewWithRunner(backend string, runner CommandRunner) (Jail, error) {
+	switch backend {
+	case "systemd-run":
+		return &SystemdJail{runner: runner}, nil
+	default:
+		return nil, fmt.Errorf("unknown jail backend: %q", backend)
+	}
 }
