@@ -9,9 +9,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ivy/hive/internal/authz"
 	"github.com/ivy/hive/internal/github"
 	"github.com/ivy/hive/internal/workspace"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var prepareCmd = &cobra.Command{
@@ -75,6 +77,15 @@ func runPrepare(cmd *cobra.Command, args []string) error {
 	}
 
 	slog.Info("fetched issue", "title", issue.Title)
+
+	// Authz: check issue author against allowed-users (defense in depth)
+	allowedUsers := viper.GetStringSlice("security.allowed-users")
+	if len(allowedUsers) == 0 {
+		return fmt.Errorf("security.allowed-users not configured (set in .hive.toml) — refusing to run (fail-closed)")
+	}
+	if !authz.IsAllowed(issue.Author.Login, allowedUsers) {
+		return fmt.Errorf("author %q not in allowed-users — refusing to prepare workspace", issue.Author.Login)
+	}
 
 	// Create workspace (worktree + .hive/ metadata)
 	ws, err := workspace.Create(cmd.Context(), localPath, repo, issueNumber)
