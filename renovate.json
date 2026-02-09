@@ -1,0 +1,67 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "automerge": true,
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ]
+    },
+    {
+      "automerge": false,
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ]
+    },
+    {
+      "automerge": true,
+      "matchManagers": [
+        "mise"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ]
+    },
+    {
+      "automerge": false,
+      "matchManagers": [
+        "mise"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ]
+    },
+    {
+      "automerge": true,
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true
+    }
+  ],
+  "rangeStrategy": "pin",
+  "schedule": [
+    "before 9am on Monday"
+  ],
+  "vulnerabilityAlerts": {
+    "automerge": true,
+    "enabled": true,
+    "schedule": [
+      "at any time"
+    ]
+  }
+}
