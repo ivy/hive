@@ -76,6 +76,34 @@ func buildBootstrap(home string, opts RunOpts) string {
 	return b.String()
 }
 
+// RunCapture builds and executes a systemd-run command that sandboxes the given
+// command, capturing stdout as []byte. Uses --pipe instead of --pty so stdout
+// isn't mixed with terminal control sequences.
+func (j *SystemdJail) RunCapture(ctx context.Context, opts RunOpts) ([]byte, error) {
+	home := os.Getenv("HOME")
+	bootstrap := buildBootstrap(home, opts)
+
+	args := []string{
+		"--user", "--pipe",
+		"-p", fmt.Sprintf("TemporaryFileSystem=%s:mode=0755", home),
+		"-p", "ProtectSystem=strict",
+		"-p", "PrivateTmp=yes",
+		"-p", "NoNewPrivileges=yes",
+		"-p", fmt.Sprintf("BindPaths=%s", opts.Workspace.Path),
+		"-p", fmt.Sprintf("BindPaths=%s/.git", opts.Workspace.RepoPath),
+		"-p", fmt.Sprintf("BindPaths=%s/.claude", home),
+		"-p", fmt.Sprintf("BindReadOnlyPaths=%s/.local/bin", home),
+		"-p", fmt.Sprintf("BindReadOnlyPaths=%s/.local/share/mise", home),
+		"-p", fmt.Sprintf("BindReadOnlyPaths=%s/.local/share/claude", home),
+		"--", "/bin/bash", "-c", bootstrap,
+	}
+
+	cmd := j.runner("systemd-run", args...)
+	cmd.Stderr = os.Stderr
+
+	return cmd.Output()
+}
+
 // shellJoin quotes each argument for safe embedding in a shell script.
 func shellJoin(args []string) string {
 	quoted := make([]string, len(args))
