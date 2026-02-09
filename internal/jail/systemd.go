@@ -20,7 +20,7 @@ func (j *SystemdJail) Run(ctx context.Context, opts RunOpts) error {
 	bootstrap := buildBootstrap(home, opts)
 
 	args := []string{
-		"--user", "--pty",
+		"--user", "--pipe",
 		"-p", fmt.Sprintf("TemporaryFileSystem=%s:mode=0755", home),
 		"-p", "ProtectSystem=strict",
 		"-p", "PrivateTmp=yes",
@@ -35,7 +35,6 @@ func (j *SystemdJail) Run(ctx context.Context, opts RunOpts) error {
 	}
 
 	cmd := j.runner("systemd-run", args...)
-	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

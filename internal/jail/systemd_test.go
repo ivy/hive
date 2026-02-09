@@ -92,10 +92,10 @@ var _ = Describe("Jail", func() {
 			Expect(c.name).To(Equal("systemd-run"))
 		})
 
-		It("passes --user and --pty flags", func() {
+		It("passes --user and --pipe flags", func() {
 			err := j.Run(context.Background(), opts)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(c.args).To(ContainElements("--user", "--pty"))
+			Expect(c.args).To(ContainElements("--user", "--pipe"))
 		})
 
 		It("sets TemporaryFileSystem on $HOME", func() {
