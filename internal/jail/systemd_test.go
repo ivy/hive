@@ -253,6 +253,80 @@ var _ = Describe("Jail", func() {
 			})
 		})
 	})
+
+	Describe("SystemdJail.RunCapture", func() {
+		var (
+			c    captured
+			j    jail.Jail
+			opts jail.RunOpts
+		)
+
+		BeforeEach(func() {
+			c = captured{}
+			var err error
+			j, err = jail.NewWithRunner("systemd-run", recordingRunner(&c))
+			Expect(err).NotTo(HaveOccurred())
+
+			opts = jail.RunOpts{
+				Workspace: &workspace.Workspace{
+					Path:     "/tmp/hive/ws-456",
+					RepoPath: "/home/ivy/src/myrepo",
+				},
+				Command: []string{"claude", "-p", "--output-format", "json"},
+			}
+		})
+
+		It("invokes systemd-run", func() {
+			_, err := j.RunCapture(context.Background(), opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.name).To(Equal("systemd-run"))
+		})
+
+		It("uses --pipe instead of --pty", func() {
+			_, err := j.RunCapture(context.Background(), opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.args).To(ContainElement("--pipe"))
+			Expect(c.args).NotTo(ContainElement("--pty"))
+		})
+
+		It("passes --user flag", func() {
+			_, err := j.RunCapture(context.Background(), opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.args).To(ContainElement("--user"))
+		})
+
+		It("sets the same sandbox properties as Run", func() {
+			_, err := j.RunCapture(context.Background(), opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.args).To(ContainElement("ProtectSystem=strict"))
+			Expect(c.args).To(ContainElement("PrivateTmp=yes"))
+			Expect(c.args).To(ContainElement("NoNewPrivileges=yes"))
+		})
+
+		It("bind-mounts the worktree", func() {
+			_, err := j.RunCapture(context.Background(), opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			bindArgs := flagValues(c.args, "BindPaths=")
+			Expect(bindArgs).To(ContainElement("/tmp/hive/ws-456"))
+		})
+
+		It("ends args with -- /bin/bash -c <bootstrap>", func() {
+			_, err := j.RunCapture(context.Background(), opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			dashIdx := -1
+			for i, a := range c.args {
+				if a == "--" {
+					dashIdx = i
+					break
+				}
+			}
+			Expect(dashIdx).To(BeNumerically(">", 0))
+			Expect(c.args[dashIdx+1]).To(Equal("/bin/bash"))
+			Expect(c.args[dashIdx+2]).To(Equal("-c"))
+		})
+	})
 })
 
 // flagValues extracts the values from -p args that start with the given prefix.

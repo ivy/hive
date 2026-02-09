@@ -37,6 +37,10 @@ type Jail interface {
 	// Run executes a command inside the jail with the given options.
 	// It connects stdin/stdout/stderr to the current terminal.
 	Run(ctx context.Context, opts RunOpts) error
+
+	// RunCapture executes a command inside the jail and captures stdout.
+	// Stderr still goes to os.Stderr for logging/debug visibility.
+	RunCapture(ctx context.Context, opts RunOpts) ([]byte, error)
 }
 
 // New creates a Jail for the given backend name.
