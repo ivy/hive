@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/ivy/hive/internal/github"
+	"github.com/ivy/hive/internal/jail"
+	"github.com/ivy/hive/internal/prdraft"
 	"github.com/ivy/hive/internal/workspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -63,10 +65,28 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	}
 	slog.Info("pushed branch", "branch", ws.Branch)
 
-	// Create PR
-	title := fmt.Sprintf("hive: implement #%d", ws.IssueNumber)
-	body := fmt.Sprintf("Automated by [hive](https://github.com/ivy/hive).\n\nCloses #%d", ws.IssueNumber)
-	pr, err := gh.CreatePR(cmd.Context(), ws.Repo, ws.Branch, title, body)
+	// Draft PR content using Claude
+	backend := viper.GetString("jail.backend")
+	if backend == "" {
+		backend = "systemd-run"
+	}
+	j, err := jail.New(backend)
+	if err != nil {
+		return fmt.Errorf("create jail: %w", err)
+	}
+
+	drafter := prdraft.New(j)
+	prContent, draftErr := drafter.Draft(cmd.Context(), prdraft.DraftParams{
+		Workspace: ws,
+		Model:     "sonnet",
+		Resume:    true,
+	})
+	if draftErr != nil {
+		slog.Warn("PR draft failed, using fallback", "error", draftErr)
+		prContent = prdraft.Fallback(ws.IssueNumber)
+	}
+
+	pr, err := gh.CreatePR(cmd.Context(), ws.Repo, ws.Branch, prContent.Title, prContent.Body)
 	if err != nil {
 		return fmt.Errorf("create PR: %w", err)
 	}
