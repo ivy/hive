@@ -1,18 +1,11 @@
 package main
 
 import (
-	"testing"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/ivy/hive/internal/workspace"
 )
-
-func TestExec(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Exec Suite")
-}
 
 var _ = Describe("buildNewClaudeCommand", func() {
 	var ws *workspace.Workspace
