@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -24,7 +25,7 @@ runs agents inside sandboxed environments, and opens PRs with the results.`,
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().String("config", "", "config file (default: .hive.toml)")
+	rootCmd.PersistentFlags().String("config", "", "config file (default: ~/.config/hive/config.toml)")
 	rootCmd.PersistentFlags().Bool("verbose", false, "enable debug logging")
 }
 
@@ -32,9 +33,16 @@ func initConfig() {
 	if cfgFile, _ := rootCmd.Flags().GetString("config"); cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {
-		viper.SetConfigName(".hive")
+		viper.SetConfigName("config")
 		viper.SetConfigType("toml")
 		viper.AddConfigPath(".")
+
+		if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+			viper.AddConfigPath(filepath.Join(xdg, "hive"))
+		}
+		if home, err := os.UserHomeDir(); err == nil {
+			viper.AddConfigPath(filepath.Join(home, ".config", "hive"))
+		}
 	}
 
 	viper.AutomaticEnv()
