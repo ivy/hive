@@ -50,7 +50,7 @@ func runPublish(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("check uncommitted changes: %w", err)
 	}
 	if hasChanges {
-		slog.Info("agent left uncommitted changes, committing")
+		slog.Warn("agent left uncommitted changes after retries, auto-committing")
 		msg := fmt.Sprintf("feat: implement #%d\n\nAutomated commit by hive — agent exited without committing.", ws.IssueNumber)
 		if err := workspace.CommitAll(cmd.Context(), ws, msg); err != nil {
 			return fmt.Errorf("auto-commit: %w", err)

@@ -12,6 +12,18 @@ import (
 	"github.com/spf13/viper"
 )
 
+const agentSystemPrompt = `Commit your work before finishing. Use /commit for each logical change — small, focused commits, not one big batch at the end. Don't leave uncommitted changes in the worktree.`
+
+const maxCommitRetries = 3
+
+const commitNudge = `You left uncommitted changes in the worktree. Please either:
+
+- Use /commit to commit them (split into logical commits if needed)
+- Add generated/temporary files to .gitignore
+- Explain why the changes should not be committed
+
+Then exit.`
+
 var execCmd = &cobra.Command{
 	Use:   "exec <workspace-path>",
 	Short: "Launch agent in sandboxed workspace",
@@ -81,6 +93,31 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("agent execution: %w", err)
 	}
 
+	// Nudge agent to commit any leftover changes
+	for attempt := 1; attempt <= maxCommitRetries; attempt++ {
+		hasChanges, err := workspace.HasUncommittedChanges(cmd.Context(), ws)
+		if err != nil || !hasChanges {
+			break
+		}
+		slog.Warn("agent left uncommitted changes, resuming session",
+			"attempt", attempt, "max", maxCommitRetries)
+
+		retryCmd := []string{
+			"claude", "-p",
+			"--dangerously-skip-permissions",
+			"--resume", ws.SessionID,
+			"--append-system-prompt", agentSystemPrompt,
+			"--model", model,
+			"--output-format", "json",
+			commitNudge,
+		}
+		opts.Command = retryCmd
+		if err := j.Run(cmd.Context(), opts); err != nil {
+			slog.Error("commit retry failed", "attempt", attempt, "error", err)
+			break
+		}
+	}
+
 	if err := workspace.SetStatus(ws, workspace.StatusStopped); err != nil {
 		return fmt.Errorf("set status: %w", err)
 	}
@@ -101,6 +138,7 @@ func buildClaudeCommand(ws *workspace.Workspace, resume string, model string) ([
 			"claude", "-p",
 			"--dangerously-skip-permissions",
 			"--resume", sessionID,
+			"--append-system-prompt", agentSystemPrompt,
 			"--model", model,
 			"--output-format", "json",
 			resume,
@@ -121,6 +159,7 @@ func buildNewClaudeCommand(ws *workspace.Workspace, model string, prompt string)
 		"claude", "-p",
 		"--dangerously-skip-permissions",
 		"--session-id", ws.SessionID,
+		"--append-system-prompt", agentSystemPrompt,
 		"--model", model,
 		"--output-format", "json",
 		prompt,
