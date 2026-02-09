@@ -4,32 +4,39 @@ Personal agent orchestrator. Turns a GitHub Projects backlog into pull requests 
 
 See `docs/vision.md` for motivation, `docs/core-principles.md` for decision filters.
 
-## Status
-
-Greenfield — Go module declared, no source code yet. Docs and a validated shell prototype exist.
-
 ## Repo Map
 
 ```
+cmd/hive/               # CLI entry point (cobra commands)
+internal/
+  authz/                # Issue author authorization
+  github/               # Board status, issue fetch, PR creation, push
+  jail/                 # Execution environment (systemd-run, swappable)
+  prdraft/              # Structured-output PR drafting via Claude
+  workspace/            # Git worktree creation, metadata, lifecycle
 docs/
   vision.md             # Why this project exists
   core-principles.md    # Decision filters (6 principles)
   architecture.md       # Component design, data flow, trust boundaries
   prototype-learnings.md # Constraints from the shell prototype
-  prototype/            # Shell prototype scripts and specs
   adrs/                 # Architecture Decision Records
-go.mod                  # Module: github.com/ivy/hive, Go 1.25.7
 ```
 
-**Planned structure** (not yet created):
+## Project Board
 
-```
-cmd/hive/               # CLI entry point
-internal/
-  workspace/            # Git worktree creation, metadata, lifecycle
-  jail/                 # Execution environment (systemd-run, swappable)
-  github/               # Board status, issue fetch, PR creation, push
-```
+[GitHub Projects board](https://github.com/users/ivy/projects/26) drives the pipeline. Board columns and field option IDs:
+
+| Column | Option ID | Role |
+|--------|-----------|------|
+| Triage 📥 | `0282c225` | New issues land here |
+| Icebox 🧊 | `8305ec23` | Parked/deferred |
+| Planning 🧠 | `6d145703` | Needs design/breakdown |
+| Ready 🤖 | `11a2b218` | `hive poll` picks these up |
+| In Progress 🚧 | `dacd8d8c` | Agent is working |
+| In Review 👀 | `2f8088e7` | PR opened, awaiting review |
+| Done ✅ | `8ee47ba7` | Merged |
+
+Status field ID: `PVTSSF_lAHOADgWUM4BOoACzg9RZqI`. Project node ID: `PVT_kwHOADgWUM4BOoAC`. Configured in `~/.config/hive/config.toml` — see `hive.example.toml` for format.
 
 ## Pipeline
 
@@ -57,7 +64,7 @@ Additional commands: `list`, `attach`, `cleanup` — see `docs/architecture.md`.
 | Concern | Choice |
 |---------|--------|
 | CLI | cobra + pflag |
-| Config | viper (per-repo `.hive.toml`) |
+| Config | viper (`~/.config/hive/config.toml`) |
 | Logging | `log/slog` + `systemd/slog-journal` |
 | GitHub | `gh` CLI via `os/exec` |
 | Sandbox | `systemd-run` via `os/exec` (behind `Jail` interface) |
@@ -70,12 +77,13 @@ See `docs/adrs/002-tech-stack.md` for rationale.
 ```bash
 go test ./...       # run all specs (Ginkgo BDD via go test)
 go vet ./...        # static analysis
-go build ./...      # build
+make build          # build binary to ./hive
+make install        # install to ~/.local/bin/hive
 ```
 
 Specs use Ginkgo/Gomega BDD style (`Describe`/`Context`/`It`). Write specs that read like requirements — agents use them to understand expected behavior.
 
-Tool versions managed by mise — see `.mise.toml` (when created).
+Tool versions managed by mise — see `mise.toml`. Pre-commit hooks managed by hk — see `hk.pkl`.
 
 ## Change Expectations
 

@@ -1,3 +1,7 @@
+# Sandbox config for developing hive against its own repo.
+# The real production config lives in ivy/dotfiles.
+# Each target repo gets its own .hive.toml with repo-specific IDs.
+
 [poll]
 # interval = "5m"
 
