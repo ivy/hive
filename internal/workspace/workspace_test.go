@@ -21,7 +21,7 @@ func initBareRepo(dir string) string {
 	Expect(os.MkdirAll(repoPath, 0o755)).To(Succeed())
 
 	cmds := [][]string{
-		{"git", "init"},
+		{"git", "init", "-b", "main"},
 		{"git", "config", "user.email", "test@test.com"},
 		{"git", "config", "user.name", "Test"},
 		{"git", "commit", "--allow-empty", "-m", "initial"},
