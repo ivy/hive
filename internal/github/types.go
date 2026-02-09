@@ -37,22 +37,28 @@ type BoardItem struct {
 	Type    string `json:"type"`
 }
 
-// projectItemListResponse is the top-level JSON from gh project item-list --format json.
-type projectItemListResponse struct {
-	Items []projectItem `json:"items"`
+// graphQLReadyItemsResponse is the GraphQL response for querying ready items.
+type graphQLReadyItemsResponse struct {
+	Data struct {
+		Viewer struct {
+			ProjectV2 struct {
+				Items struct {
+					Nodes []graphQLProjectItem `json:"nodes"`
+				} `json:"items"`
+			} `json:"projectV2"`
+		} `json:"viewer"`
+	} `json:"data"`
 }
 
-// projectItem is a single item in the gh project item-list response.
-type projectItem struct {
-	ID      string             `json:"id"`
-	Title   string             `json:"title"`
-	Status  string             `json:"status"`
-	Content projectItemContent `json:"content"`
-}
-
-// projectItemContent holds nested content fields (number, repository, type).
-type projectItemContent struct {
-	Number     int    `json:"number"`
-	Repository string `json:"repository"`
-	Type       string `json:"type"`
+// graphQLProjectItem is a single item node in the GraphQL response.
+type graphQLProjectItem struct {
+	ID      string `json:"id"`
+	Content struct {
+		Typename   string `json:"__typename"`
+		Number     int    `json:"number"`
+		Title      string `json:"title"`
+		Repository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"repository"`
+	} `json:"content"`
 }

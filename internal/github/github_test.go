@@ -123,13 +123,18 @@ var _ = Describe("Client", func() {
 	})
 
 	Describe("ReadyItems", func() {
-		It("filters for items with Ready status", func() {
-			resp := `{"items":[
-				{"id":"PVTI_abc","title":"feat: something","status":"Ready 🤖","content":{"number":143,"repository":"ivy/dotfiles","type":"Issue"}},
-				{"id":"PVTI_def","title":"fix: other","status":"In Progress","content":{"number":200,"repository":"ivy/hive","type":"Issue"}},
-				{"id":"PVTI_ghi","title":"chore: ready thing","status":"Ready 🤖","content":{"number":50,"repository":"ivy/scripts","type":"Issue"}}
-			]}`
-			client := github.NewClientWithRunner(fakeRunner(resp, 0))
+		readyClient := func(runner github.CommandRunner) *github.Client {
+			c := github.NewClientWithRunner(runner)
+			c.ReadyStatus = "Ready 🤖"
+			return c
+		}
+
+		It("parses GraphQL response into board items", func() {
+			resp := `{"data":{"viewer":{"projectV2":{"items":{"nodes":[
+				{"id":"PVTI_abc","content":{"__typename":"Issue","number":143,"title":"feat: something","repository":{"nameWithOwner":"ivy/dotfiles"}}},
+				{"id":"PVTI_ghi","content":{"__typename":"Issue","number":50,"title":"chore: ready thing","repository":{"nameWithOwner":"ivy/scripts"}}}
+			]}}}}}`
+			client := readyClient(fakeRunner(resp, 0))
 
 			items, err := client.ReadyItems(ctx, "42")
 			Expect(err).NotTo(HaveOccurred())
@@ -144,51 +149,58 @@ var _ = Describe("Client", func() {
 			Expect(items[1].Repo).To(Equal("ivy/scripts"))
 		})
 
-		It("returns empty slice when no items are ready", func() {
-			resp := `{"items":[{"id":"PVTI_def","title":"fix: other","status":"In Progress","content":{"number":200,"repository":"ivy/hive","type":"Issue"}}]}`
-			client := github.NewClientWithRunner(fakeRunner(resp, 0))
+		It("identifies draft issues", func() {
+			resp := `{"data":{"viewer":{"projectV2":{"items":{"nodes":[
+				{"id":"PVTI_draft","content":{"__typename":"DraftIssue","title":"draft thing"}}
+			]}}}}}`
+			client := readyClient(fakeRunner(resp, 0))
+
+			items, err := client.ReadyItems(ctx, "42")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(items).To(HaveLen(1))
+			Expect(items[0].IsDraft).To(BeTrue())
+			Expect(items[0].Type).To(Equal("DraftIssue"))
+		})
+
+		It("returns empty slice when no items match", func() {
+			resp := `{"data":{"viewer":{"projectV2":{"items":{"nodes":[]}}}}}`
+			client := readyClient(fakeRunner(resp, 0))
 
 			items, err := client.ReadyItems(ctx, "42")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(items).To(BeEmpty())
 		})
 
-		It("returns empty slice when item list is empty", func() {
-			client := github.NewClientWithRunner(fakeRunner(`{"items":[]}`, 0))
-
-			items, err := client.ReadyItems(ctx, "42")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(items).To(BeEmpty())
-		})
-
-		It("passes the correct arguments to gh", func() {
-			rec := &recordingRunner{inner: fakeRunner(`{"items":[]}`, 0)}
-			client := github.NewClientWithRunner(rec.run)
+		It("passes a GraphQL query filtering by status", func() {
+			resp := `{"data":{"viewer":{"projectV2":{"items":{"nodes":[]}}}}}`
+			rec := &recordingRunner{inner: fakeRunner(resp, 0)}
+			client := readyClient(rec.run)
 
 			_, err := client.ReadyItems(ctx, "42")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rec.calls).To(HaveLen(1))
-			Expect(rec.calls[0]).To(Equal([]string{
-				"gh", "project", "item-list", "42",
-				"--owner", "@me",
-				"--format", "json",
-			}))
+			Expect(rec.calls[0][0]).To(Equal("gh"))
+			Expect(rec.calls[0][1]).To(Equal("api"))
+			Expect(rec.calls[0][2]).To(Equal("graphql"))
+			Expect(rec.calls[0][3]).To(Equal("-f"))
+			Expect(rec.calls[0][4]).To(ContainSubstring("projectV2(number: 42)"))
+			Expect(rec.calls[0][4]).To(ContainSubstring(`status:\"Ready 🤖\"`))
 		})
 
 		It("returns an error when gh fails", func() {
-			client := github.NewClientWithRunner(fakeRunner("", 1))
+			client := readyClient(fakeRunner("", 1))
 
 			_, err := client.ReadyItems(ctx, "42")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("gh project item-list"))
+			Expect(err.Error()).To(ContainSubstring("gh api graphql"))
 		})
 
 		It("returns an error for invalid JSON", func() {
-			client := github.NewClientWithRunner(fakeRunner("{bad", 0))
+			client := readyClient(fakeRunner("{bad", 0))
 
 			_, err := client.ReadyItems(ctx, "42")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("parsing project items JSON"))
+			Expect(err.Error()).To(ContainSubstring("parsing ready items JSON"))
 		})
 	})
 

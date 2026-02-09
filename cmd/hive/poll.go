@@ -72,6 +72,7 @@ func pollOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("github client: %w", err)
 	}
+	gh.ReadyStatus = viper.GetString("github.ready-status")
 	gh.StatusFieldID = viper.GetString("github.status-field-id")
 	gh.InProgressOptionID = viper.GetString("github.in-progress-option-id")
 

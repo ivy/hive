@@ -16,6 +16,9 @@ type CommandRunner func(name string, args ...string) *exec.Cmd
 type Client struct {
 	runner CommandRunner
 
+	// ReadyStatus is the exact status name to filter for (e.g. "Ready 🤖").
+	ReadyStatus string
+
 	// StatusFieldID is the project field ID for the "Status" field.
 	StatusFieldID string
 
@@ -58,33 +61,51 @@ func (c *Client) FetchIssue(ctx context.Context, repo string, number int) (*Issu
 	return &issue, nil
 }
 
-// ReadyItems lists items in the "Ready" column of a project board.
-func (c *Client) ReadyItems(ctx context.Context, projectID string) ([]BoardItem, error) {
-	cmd := c.runner("gh", "project", "item-list", projectID,
-		"--owner", "@me",
-		"--format", "json",
-	)
+// ReadyItems queries for items matching ReadyStatus on a project board
+// using the GitHub GraphQL API with server-side filtering.
+func (c *Client) ReadyItems(ctx context.Context, projectNumber string) ([]BoardItem, error) {
+	query := fmt.Sprintf(`{
+	viewer {
+		projectV2(number: %s) {
+			items(first: 100, query: "status:\"%s\"") {
+				nodes {
+					id
+					content {
+						__typename
+						... on Issue {
+							number
+							title
+							repository { nameWithOwner }
+						}
+						... on DraftIssue { title }
+					}
+				}
+			}
+		}
+	}
+}`, projectNumber, c.ReadyStatus)
+
+	cmd := c.runner("gh", "api", "graphql", "-f", "query="+query)
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("gh project item-list: %w", err)
+		return nil, fmt.Errorf("gh api graphql (ready items): %w", err)
 	}
-	var resp projectItemListResponse
+
+	var resp graphQLReadyItemsResponse
 	if err := json.Unmarshal(out, &resp); err != nil {
-		return nil, fmt.Errorf("parsing project items JSON: %w", err)
+		return nil, fmt.Errorf("parsing ready items JSON: %w", err)
 	}
+
 	var items []BoardItem
-	for _, pi := range resp.Items {
-		if !strings.Contains(pi.Status, "Ready") {
-			continue
-		}
+	for _, node := range resp.Data.Viewer.ProjectV2.Items.Nodes {
 		items = append(items, BoardItem{
-			ID:      pi.ID,
-			Title:   pi.Title,
-			Number:  pi.Content.Number,
-			Repo:    pi.Content.Repository,
-			Status:  pi.Status,
-			IsDraft: pi.Content.Type == "DraftIssue",
-			Type:    pi.Content.Type,
+			ID:      node.ID,
+			Title:   node.Content.Title,
+			Number:  node.Content.Number,
+			Repo:    node.Content.Repository.NameWithOwner,
+			Status:  c.ReadyStatus,
+			IsDraft: node.Content.Typename == "DraftIssue",
+			Type:    node.Content.Typename,
 		})
 	}
 	return items, nil
