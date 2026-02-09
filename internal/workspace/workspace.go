@@ -80,7 +80,7 @@ func Create(ctx context.Context, repoPath string, repo string, issueNumber int) 
 		return nil, fmt.Errorf("creating base dir: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "worktree", "add", "-b", branch, wsPath, "main")
+	cmd := exec.CommandContext(ctx, "git", "worktree", "add", "-b", branch, wsPath, "HEAD")
 	cmd.Dir = repoPath
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("git worktree add: %s: %w", strings.TrimSpace(string(out)), err)
