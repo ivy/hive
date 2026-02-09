@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -96,5 +97,63 @@ var _ = Describe("poll --interval flag", func() {
 		viper.Reset()
 		viper.Set("poll.interval", 5*time.Minute)
 		Expect(viper.GetDuration("poll.interval")).To(Equal(5 * time.Minute))
+	})
+})
+
+var _ = Describe("poll --max-concurrent flag", func() {
+	It("defaults to 2", func() {
+		val, err := pollCmd.Flags().GetInt("max-concurrent")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(Equal(2))
+	})
+
+	It("is bound to viper poll.max-concurrent", func() {
+		viper.Reset()
+		viper.Set("poll.max-concurrent", 5)
+		Expect(viper.GetInt("poll.max-concurrent")).To(Equal(5))
+	})
+})
+
+var _ = Describe("countRunningProcesses", func() {
+	BeforeEach(func() {
+		// Clear global state
+		runningProcessesMu.Lock()
+		runningProcesses = make(map[int]struct{})
+		runningProcessesMu.Unlock()
+	})
+
+	Context("with no tracked processes", func() {
+		It("returns 0", func() {
+			Expect(countRunningProcesses()).To(Equal(0))
+		})
+	})
+
+	Context("with tracked processes", func() {
+		It("counts only alive processes", func() {
+			// Track current test process (self, guaranteed alive)
+			runningProcessesMu.Lock()
+			currentPID := os.Getpid()
+			runningProcesses[currentPID] = struct{}{}
+			runningProcessesMu.Unlock()
+
+			Expect(countRunningProcesses()).To(Equal(1))
+		})
+
+		It("prunes dead processes", func() {
+			// Track a PID that doesn't exist
+			runningProcessesMu.Lock()
+			deadPID := 999999
+			runningProcesses[deadPID] = struct{}{}
+			runningProcessesMu.Unlock()
+
+			// countRunningProcesses should prune it
+			Expect(countRunningProcesses()).To(Equal(0))
+
+			// Verify it's actually removed
+			runningProcessesMu.Lock()
+			_, exists := runningProcesses[deadPID]
+			runningProcessesMu.Unlock()
+			Expect(exists).To(BeFalse())
+		})
 	})
 })

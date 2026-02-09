@@ -1,5 +1,6 @@
 [poll]
 # interval = "5m"
+# max-concurrent = 2  # max concurrent hive run processes (0 = no limit)
 
 [security]
 allowed-users = ["ivy"]

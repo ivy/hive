@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ivy/hive/internal/authz"
@@ -22,10 +24,54 @@ var pollCmd = &cobra.Command{
 	RunE:  runPoll,
 }
 
+// runningProcesses tracks PIDs of dispatched hive run processes.
+// Access must be serialized via the mutex.
+var (
+	runningProcesses   = make(map[int]struct{})
+	runningProcessesMu sync.Mutex
+)
+
 func init() {
 	pollCmd.Flags().Duration("interval", 0, "poll interval (e.g. 5m); if unset, run once and exit")
+	pollCmd.Flags().Int("max-concurrent", 2, "max concurrent hive run processes (0 = no limit)")
 	viper.BindPFlag("poll.interval", pollCmd.Flags().Lookup("interval"))
+	viper.BindPFlag("poll.max-concurrent", pollCmd.Flags().Lookup("max-concurrent"))
 	rootCmd.AddCommand(pollCmd)
+}
+
+// countRunningProcesses returns the number of tracked processes still alive.
+// It prunes dead processes from the tracker.
+func countRunningProcesses() int {
+	runningProcessesMu.Lock()
+	defer runningProcessesMu.Unlock()
+
+	// Prune dead processes
+	for pid := range runningProcesses {
+		// Check if process is still alive by sending signal 0
+		process, err := os.FindProcess(pid)
+		if err != nil || process.Signal(syscall.Signal(0)) != nil {
+			delete(runningProcesses, pid)
+		}
+	}
+
+	return len(runningProcesses)
+}
+
+// trackProcess adds a PID to the running tracker and spawns a goroutine
+// to remove it when the process exits.
+func trackProcess(cmd *exec.Cmd) {
+	pid := cmd.Process.Pid
+
+	runningProcessesMu.Lock()
+	runningProcesses[pid] = struct{}{}
+	runningProcessesMu.Unlock()
+
+	go func() {
+		cmd.Wait()
+		runningProcessesMu.Lock()
+		delete(runningProcesses, pid)
+		runningProcessesMu.Unlock()
+	}()
 }
 
 func runPoll(cmd *cobra.Command, args []string) error {
@@ -99,7 +145,20 @@ func pollOnce(ctx context.Context) error {
 
 	slog.Info("found ready items", "count", len(items))
 
+	maxConcurrent := viper.GetInt("poll.max-concurrent")
+
 	for _, item := range items {
+		// Check concurrency limit (0 = no limit)
+		if maxConcurrent > 0 {
+			running := countRunningProcesses()
+			if running >= maxConcurrent {
+				slog.Info("concurrency limit reached, skipping remaining items",
+					"limit", maxConcurrent, "running", running, "skipped_item", item.Title)
+				break
+			}
+		}
+
+
 		if item.IsDraft {
 			slog.Warn("skipping draft", "title", item.Title)
 			continue
@@ -135,12 +194,7 @@ func pollOnce(ctx context.Context) error {
 			continue
 		}
 
-		go func() {
-			if err := hiveCmd.Wait(); err != nil {
-				slog.Error("run failed", "ref", ref, "error", err)
-			}
-		}()
-
+		trackProcess(hiveCmd)
 		slog.Info("dispatched", "ref", ref, "pid", hiveCmd.Process.Pid)
 	}
 
