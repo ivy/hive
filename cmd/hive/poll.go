@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/ivy/hive/internal/authz"
 	"github.com/ivy/hive/internal/github"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -53,11 +54,28 @@ func runPoll(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("github.project-node-id not configured (set in .hive.toml)")
 	}
 
+	allowedUsers := viper.GetStringSlice("security.allowed-users")
+	if len(allowedUsers) == 0 {
+		return fmt.Errorf("security.allowed-users not configured (set in .hive.toml) — refusing to run (fail-closed)")
+	}
+
 	slog.Info("found ready items", "count", len(items))
 
 	for _, item := range items {
 		if item.IsDraft {
 			slog.Warn("skipping draft", "title", item.Title)
+			continue
+		}
+
+		// Authz: fetch issue to check author against allowed-users
+		issue, err := gh.FetchIssue(cmd.Context(), item.Repo, item.Number)
+		if err != nil {
+			slog.Error("failed to fetch issue for authz", "error", err, "item", item.Title)
+			continue
+		}
+		if !authz.IsAllowed(issue.Author.Login, allowedUsers) {
+			slog.Warn("skipping item — author not in allowed-users",
+				"author", issue.Author.Login, "title", item.Title)
 			continue
 		}
 

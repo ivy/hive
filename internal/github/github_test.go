@@ -77,7 +77,7 @@ var _ = Describe("Client", func() {
 
 	Describe("FetchIssue", func() {
 		It("parses a valid issue response", func() {
-			issueJSON := `{"number":143,"title":"feat(hooks): allow bypassing","body":"Issue body","state":"OPEN","url":"https://github.com/ivy/dotfiles/issues/143"}`
+			issueJSON := `{"number":143,"title":"feat(hooks): allow bypassing","body":"Issue body","state":"OPEN","url":"https://github.com/ivy/dotfiles/issues/143","author":{"login":"ivy"}}`
 			client := github.NewClientWithRunner(fakeRunner(issueJSON, 0))
 
 			issue, err := client.FetchIssue(ctx, "ivy/dotfiles", 143)
@@ -87,10 +87,11 @@ var _ = Describe("Client", func() {
 			Expect(issue.Body).To(Equal("Issue body"))
 			Expect(issue.State).To(Equal("OPEN"))
 			Expect(issue.URL).To(Equal("https://github.com/ivy/dotfiles/issues/143"))
+			Expect(issue.Author.Login).To(Equal("ivy"))
 		})
 
 		It("passes the correct arguments to gh", func() {
-			issueJSON := `{"number":143,"title":"t","body":"b","state":"OPEN","url":"u"}`
+			issueJSON := `{"number":143,"title":"t","body":"b","state":"OPEN","url":"u","author":{"login":"ivy"}}`
 			rec := &recordingRunner{inner: fakeRunner(issueJSON, 0)}
 			client := github.NewClientWithRunner(rec.run)
 
@@ -100,7 +101,7 @@ var _ = Describe("Client", func() {
 			Expect(rec.calls[0]).To(Equal([]string{
 				"gh", "issue", "view", "143",
 				"--repo", "ivy/dotfiles",
-				"--json", "number,title,body,state,url",
+				"--json", "number,title,body,state,url,author",
 			}))
 		})
 

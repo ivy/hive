@@ -3,6 +3,11 @@
 // and branch pushing.
 package github
 
+// Author represents a GitHub user (issue author, PR author, etc.).
+type Author struct {
+	Login string `json:"login"`
+}
+
 // Issue represents a GitHub issue fetched via gh.
 type Issue struct {
 	Number int    `json:"number"`
@@ -10,6 +15,7 @@ type Issue struct {
 	Body   string `json:"body"`
 	State  string `json:"state"`
 	URL    string `json:"url"`
+	Author Author `json:"author"`
 }
 
 // PR represents a GitHub pull request.

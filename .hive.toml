@@ -1,3 +1,6 @@
+[security]
+allowed-users = ["ivy"]
+
 [jail]
 backend = "systemd-run"
 

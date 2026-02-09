@@ -45,7 +45,7 @@ func (c *Client) FetchIssue(ctx context.Context, repo string, number int) (*Issu
 	cmd := c.runner("gh", "issue", "view",
 		fmt.Sprintf("%d", number),
 		"--repo", repo,
-		"--json", "number,title,body,state,url",
+		"--json", "number,title,body,state,url,author",
 	)
 	out, err := cmd.Output()
 	if err != nil {
