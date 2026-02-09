@@ -5,8 +5,8 @@ allowed-users = ["ivy"]
 backend = "systemd-run"
 
 [github]
-project-id = "10"
-project-node-id = "PVT_kwHOADgWUM4AtFkW"
-status-field-id = "PVTSSF_lAHOADgWUM4AtFkWzgj58fA"
-in-progress-option-id = "dacd8d8c"
-in-review-option-id = "2f8088e7"
+project-id = "29"
+project-node-id = "PVT_kwHOADgWUM4BOsG3"
+status-field-id = "PVTSSF_lAHOADgWUM4BOsG3zg9UQiM"
+in-progress-option-id = "6e4a1660"
+in-review-option-id = "1b866fe9"
