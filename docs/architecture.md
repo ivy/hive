@@ -94,19 +94,20 @@ failed      → a stage failed (details in .hive/error)
 ## Dispatch: Poll Loop
 
 ```
-every N minutes (systemd timer):
-  items = github.ready_items(project_id)
-  for item in items:
-    if item.is_draft:
-      log.warn("skipping draft: %s", item.title)
-      continue
-    github.move_to_in_progress(item)
-    hive run <repo>#<issue>   # background
+hive poll --interval 5m:
+  loop every interval (or once if no interval):
+    items = github.ready_items(project_id)
+    for item in items:
+      if item.is_draft:
+        log.warn("skipping draft: %s", item.title)
+        continue
+      github.move_to_in_progress(item)
+      hive run <repo>#<issue>   # background
 ```
 
 The poll loop is intentionally trivial. It connects the board to `hive run`. It doesn't know about workspaces, jails, or Claude.
 
-Implemented as a systemd timer + service on the server. No GitHub Actions runner, no webhook infrastructure.
+With `--interval` (or `poll.interval` in config), poll runs as a long-lived daemon — polling immediately, then on each tick. Without it, poll runs once and exits (for use with external schedulers). Runs as a systemd service on the server. No GitHub Actions runner, no webhook infrastructure.
 
 ## Repo Discovery
 

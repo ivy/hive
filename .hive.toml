@@ -1,3 +1,6 @@
+[poll]
+# interval = "5m"
+
 [security]
 allowed-users = ["ivy"]
 
