@@ -7,14 +7,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ivy/hive/internal/session"
 	"github.com/ivy/hive/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
 var attachCmd = &cobra.Command{
-	Use:   "attach <workspace-id>",
+	Use:   "attach <ref|uuid>",
 	Short: "Attach to running agent's tmux session",
-	Long:  "Reads the tmux session name from workspace metadata and attaches to it.",
+	Long:  "Resolves the session by ref or UUID and attaches to its tmux session.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runAttach,
 }
@@ -24,25 +25,14 @@ func init() {
 }
 
 func runAttach(cmd *cobra.Command, args []string) error {
-	wsID := args[0]
+	sess, err := resolveSession(session.DataDir(), args[0])
+	if err != nil {
+		return fmt.Errorf("resolve session: %w", err)
+	}
 
-	// Resolve workspace path — either a full path or a short ID
-	wsPath := wsID
-	if !filepath.IsAbs(wsPath) {
-		// Treat as a short ID: scan workspaces
-		workspaces, err := workspace.ListAll(cmd.Context())
-		if err != nil {
-			return fmt.Errorf("list workspaces: %w", err)
-		}
-		for _, ws := range workspaces {
-			if strings.Contains(filepath.Base(ws.Path), wsID) {
-				wsPath = ws.Path
-				break
-			}
-		}
-		if !filepath.IsAbs(wsPath) {
-			return fmt.Errorf("workspace not found: %s", wsID)
-		}
+	wsPath := filepath.Join(workspace.BaseDir(), sess.ID)
+	if _, err := os.Stat(wsPath); os.IsNotExist(err) {
+		return fmt.Errorf("workspace not found: %s", wsPath)
 	}
 
 	// Read tmux session name
