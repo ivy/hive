@@ -36,6 +36,15 @@ func runPoll(cmd *cobra.Command, args []string) error {
 	interval := viper.GetDuration("poll.interval")
 	ctx := cmd.Context()
 
+	slog.Info("poll config",
+		"source", "github-projects",
+		"project", viper.GetString("github.project-id"),
+		"ready-status", viper.GetString("github.ready-status"),
+		"interval", interval,
+		"max-concurrent", viper.GetInt("poll.max-concurrent"),
+		"config-file", viper.ConfigFileUsed(),
+	)
+
 	// Single-shot mode: run once and exit.
 	if interval <= 0 {
 		return pollOnce(ctx)
