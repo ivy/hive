@@ -301,6 +301,21 @@ func ReadBoardItemID(ws *Workspace) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
+// HasNewCommits returns true if the workspace branch has commits ahead of main.
+func HasNewCommits(ctx context.Context, ws *Workspace) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "rev-list", "--count", "main..HEAD")
+	cmd.Dir = ws.Path
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git rev-list: %w", err)
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return false, fmt.Errorf("parsing commit count: %w", err)
+	}
+	return count > 0, nil
+}
+
 // HasUncommittedChanges returns true if the workspace worktree has
 // modified, deleted, or untracked files (excluding .hive/ metadata).
 func HasUncommittedChanges(ctx context.Context, ws *Workspace) (bool, error) {

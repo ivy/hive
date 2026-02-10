@@ -42,6 +42,16 @@ func runPublish(cmd *cobra.Command, args []string) error {
 
 	slog.Info("publishing workspace", "path", ws.Path, "branch", ws.Branch)
 
+	// Safety guard: ensure the branch has commits before publishing
+	hasCommits, err := workspace.HasNewCommits(cmd.Context(), ws)
+	if err != nil {
+		return fmt.Errorf("check for commits: %w", err)
+	}
+	if !hasCommits {
+		slog.Warn("branch has no commits, skipping publish")
+		return nil
+	}
+
 	gh, err := github.NewClient()
 	if err != nil {
 		return fmt.Errorf("github client: %w", err)
