@@ -15,6 +15,11 @@ import (
 	"github.com/spf13/viper"
 )
 
+// publishSourceMeta, when non-nil, provides source metadata (e.g. board_item_id)
+// from a session. Set by runFromSession before calling runPublish. Falls back to
+// reading .hive/board-item-id when nil.
+var publishSourceMeta map[string]string
+
 var publishCmd = &cobra.Command{
 	Use:   "publish <workspace-path>",
 	Short: "Push branch, open PR, update board",
@@ -95,11 +100,17 @@ func runPublish(cmd *cobra.Command, args []string) error {
 	// Move board item to In Review
 	projectNodeID := viper.GetString("github.project-node-id")
 	if projectNodeID != "" {
-		itemIDBytes, err := os.ReadFile(filepath.Join(ws.Path, ".hive", "board-item-id"))
-		if err != nil {
-			slog.Warn("no board item ID found, skipping board update")
-		} else {
-			itemID := strings.TrimSpace(string(itemIDBytes))
+		itemID := boardItemIDFromMeta()
+		if itemID == "" {
+			// Fall back to .hive/board-item-id file
+			itemIDBytes, err := os.ReadFile(filepath.Join(ws.Path, ".hive", "board-item-id"))
+			if err != nil {
+				slog.Warn("no board item ID found, skipping board update")
+			} else {
+				itemID = strings.TrimSpace(string(itemIDBytes))
+			}
+		}
+		if itemID != "" {
 			if err := gh.MoveToInReview(cmd.Context(), projectNodeID, itemID); err != nil {
 				slog.Warn("could not move board item to In Review", "error", err)
 			}
@@ -113,4 +124,12 @@ func runPublish(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Published: %s\n", pr.URL)
 	return nil
+}
+
+// boardItemIDFromMeta returns the board_item_id from publishSourceMeta if set.
+func boardItemIDFromMeta() string {
+	if publishSourceMeta == nil {
+		return ""
+	}
+	return publishSourceMeta["board_item_id"]
 }
