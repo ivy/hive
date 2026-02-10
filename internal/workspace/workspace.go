@@ -59,15 +59,6 @@ type Workspace struct {
 	Status Status
 }
 
-// project extracts the repo name from an owner/name string (e.g. "dotfiles" from "ivy/dotfiles").
-func project(repo string) string {
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	return repo
-}
-
 // Create creates a new workspace from a repository and issue number.
 // It creates a git worktree, .hive/ metadata directory, and writes initial
 // metadata files (repo, issue-number, session-id, status=prepared).

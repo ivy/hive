@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ivy/hive/internal/authz"
+	"github.com/ivy/hive/internal/claim"
 	"github.com/ivy/hive/internal/github"
 	"github.com/ivy/hive/internal/session"
 	"github.com/ivy/hive/internal/workspace"
@@ -60,6 +61,13 @@ func runFromSession(cmd *cobra.Command, id string) error {
 	if err != nil {
 		return fmt.Errorf("load session: %w", err)
 	}
+
+	// Best-effort claim release on completion (success or failure).
+	defer func() {
+		if err := claim.Release(dataDir, sess.Ref); err != nil {
+			slog.Warn("failed to release claim", "ref", sess.Ref, "error", err)
+		}
+	}()
 
 	repo, issueNumber, err := parseSessionRef(sess.Ref)
 	if err != nil {
@@ -150,6 +158,13 @@ func runFromIssueRef(cmd *cobra.Command, ref string) error {
 	if err := session.Create(dataDir, sess); err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
+
+	// Best-effort claim release on completion (success or failure).
+	defer func() {
+		if err := claim.Release(dataDir, sess.Ref); err != nil {
+			slog.Warn("failed to release claim", "ref", sess.Ref, "error", err)
+		}
+	}()
 
 	// Fetch issue from GitHub (for authz + prompt + title)
 	gh, err := github.NewClient()
