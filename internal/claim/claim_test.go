@@ -1,6 +1,7 @@
 package claim_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -75,6 +76,29 @@ var _ = Describe("TryClaim", func() {
 		ok2, err := claim.TryClaim(dataDir, "issue/99", "s2")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok2).To(BeTrue())
+	})
+
+	Context("under concurrent access", func() {
+		It("allows exactly one claim when called concurrently", func() {
+			const goroutines = 20
+			results := make(chan bool, goroutines)
+
+			for i := 0; i < goroutines; i++ {
+				go func(id int) {
+					ok, err := claim.TryClaim(dataDir, "concurrent-ref", fmt.Sprintf("session-%d", id))
+					Expect(err).NotTo(HaveOccurred())
+					results <- ok
+				}(i)
+			}
+
+			successes := 0
+			for i := 0; i < goroutines; i++ {
+				if <-results {
+					successes++
+				}
+			}
+			Expect(successes).To(Equal(1))
+		})
 	})
 })
 
