@@ -1,6 +1,6 @@
 # Dispatch & Lifecycle
 
-How hive dispatches work, manages agent lifecycles, and cleans up after itself. This document focuses on the *why* behind the design — the rationale, trade-offs, and failure recovery thinking. For interface definitions and directory layouts, see the [Architecture](architecture.md) and reference docs.
+How hive dispatches work, manages agent lifecycles, and cleans up after itself. This document focuses on the *why* behind the design — the rationale, trade-offs, and failure recovery thinking. For interface definitions and directory layouts, see the [Architecture](architecture.md), [Session & Data Reference](reference/session.md), [Jail Interface Reference](reference/jail-interface.md), and [Source Interface Reference](reference/source-interface.md).
 
 Motivated by [#43] (zero-downtime deploys) and [#28] (agents as systemd units). Informed by [#11] (recovery/state management), [#22] (Unix philosophy evaluation), and [#29] (multi-project support).
 
@@ -136,7 +136,7 @@ Status transitions:
 
 Terminal states: `published`, `failed`.
 
-For session JSON structure and storage details, see [Architecture — Data Layout](architecture.md#data-layout).
+For session JSON structure and storage details, see [Session & Data Reference](reference/session.md).
 
 ## Workspace lifecycle
 
@@ -154,7 +154,7 @@ Reap replaces the current manual `hive cleanup` command. Retention periods are c
 - Published sessions: short retention (workspace is low-value after PR is open)
 - Failed sessions: longer retention (workspace preserved for debugging)
 
-For workspace directory structure and metadata files, see [Architecture — Data Layout](architecture.md#data-layout).
+For workspace directory structure and metadata files, see [Session & Data Reference](reference/session.md).
 
 ## Concurrency
 
