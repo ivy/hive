@@ -267,6 +267,35 @@ var _ = Describe("Adapter", func() {
 		})
 	})
 
+	Describe("RegisterItem", func() {
+		It("allows Release to work for items not seen by Ready", func() {
+			rec := &recordingRunner{
+				inner: fakeRunner("", 0),
+			}
+			client := readyClient(rec.run)
+			adapter := ghprojects.NewAdapter(ghprojects.Config{
+				Client:        client,
+				ProjectNumber: "42",
+				ProjectNodeID: "PVT_proj",
+				AllowedUsers:  []string{"ivy"},
+			})
+
+			adapter.RegisterItem("github:ivy/hive#99", "PVTI_registered")
+
+			err := adapter.Release(ctx, "github:ivy/hive#99")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(rec.calls).To(HaveLen(1))
+			Expect(rec.calls[0]).To(Equal([]string{
+				"gh", "project", "item-edit",
+				"--project-id", "PVT_proj",
+				"--id", "PVTI_registered",
+				"--field-id", "PVTSSF_status",
+				"--single-select-option-id", "opt_ready",
+			}))
+		})
+	})
+
 	Describe("Release", func() {
 		It("moves item to Ready via github client", func() {
 			singleResp := `{"data":{"viewer":{"projectV2":{"items":{"nodes":[
