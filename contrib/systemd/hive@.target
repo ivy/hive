@@ -1,0 +1,3 @@
+[Unit]
+Description=Hive orchestrator: %I
+Wants=hive-poll@%i.service hive-reap@%i.timer

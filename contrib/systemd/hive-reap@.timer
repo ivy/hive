@@ -1,0 +1,7 @@
+[Unit]
+Description=Hive reap timer: %I
+PartOf=hive@%i.target
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
