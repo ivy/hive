@@ -1,4 +1,4 @@
-# Install Hive
+# How to Install Hive
 
 Build hive from source, install the binary, and set up systemd units.
 

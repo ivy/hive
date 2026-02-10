@@ -1,4 +1,4 @@
-# Deploy Hive as a Systemd Service
+# How to Deploy Hive as a Systemd Service
 
 Run hive as a persistent systemd user service that starts at boot.
 
