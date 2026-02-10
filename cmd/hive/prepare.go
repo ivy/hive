@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/ivy/hive/internal/authz"
 	"github.com/ivy/hive/internal/github"
 	"github.com/ivy/hive/internal/workspace"
@@ -88,7 +89,8 @@ func runPrepare(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create workspace (worktree + .hive/ metadata)
-	ws, err := workspace.Create(cmd.Context(), localPath, repo, issueNumber)
+	id := uuid.New().String()
+	ws, err := workspace.Create(cmd.Context(), localPath, repo, issueNumber, id)
 	if err != nil {
 		return fmt.Errorf("create workspace: %w", err)
 	}

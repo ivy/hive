@@ -11,13 +11,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
+	"github.com/ivy/hive/internal/session"
 )
 
-// BaseDir is the root directory where workspaces are created.
-const BaseDir = "/tmp/hive"
+// BaseDir returns the workspaces root directory.
+// Uses session.DataDir() + "/workspaces".
+func BaseDir() string {
+	return filepath.Join(session.DataDir(), "workspaces")
+}
 
 // MetaDir is the name of the metadata directory inside each workspace.
 const MetaDir = ".hive"
@@ -69,14 +71,13 @@ func project(repo string) string {
 // Create creates a new workspace from a repository and issue number.
 // It creates a git worktree, .hive/ metadata directory, and writes initial
 // metadata files (repo, issue-number, session-id, status=prepared).
-func Create(ctx context.Context, repoPath string, repo string, issueNumber int) (*Workspace, error) {
-	proj := project(repo)
-	ts := time.Now().Unix()
-	dirName := fmt.Sprintf("%s-%d-%d", proj, issueNumber, ts)
-	branch := fmt.Sprintf("hive/%s", dirName)
-	wsPath := filepath.Join(BaseDir, dirName)
+// The id parameter is the session UUID used as directory name and branch suffix.
+func Create(ctx context.Context, repoPath string, repo string, issueNumber int, id string) (*Workspace, error) {
+	branch := fmt.Sprintf("hive/%s", id)
+	baseDir := BaseDir()
+	wsPath := filepath.Join(baseDir, id)
 
-	if err := os.MkdirAll(BaseDir, 0o755); err != nil {
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating base dir: %w", err)
 	}
 
@@ -91,12 +92,10 @@ func Create(ctx context.Context, repoPath string, repo string, issueNumber int) 
 		return nil, fmt.Errorf("creating metadata dir: %w", err)
 	}
 
-	sessionID := uuid.New().String()
-
 	files := map[string]string{
 		"repo":         repo,
 		"issue-number": strconv.Itoa(issueNumber),
-		"session-id":   sessionID,
+		"session-id":   id,
 		"status":       string(StatusPrepared),
 	}
 	for name, content := range files {
@@ -111,7 +110,7 @@ func Create(ctx context.Context, repoPath string, repo string, issueNumber int) 
 		Repo:        repo,
 		IssueNumber: issueNumber,
 		Branch:      branch,
-		SessionID:   sessionID,
+		SessionID:   id,
 		Status:      StatusPrepared,
 	}, nil
 }
@@ -225,7 +224,8 @@ func Remove(ctx context.Context, ws *Workspace) error {
 // ListAll scans BaseDir for directories containing .hive/ and returns
 // loaded Workspace structs for each.
 func ListAll(ctx context.Context) ([]*Workspace, error) {
-	entries, err := os.ReadDir(BaseDir)
+	baseDir := BaseDir()
+	entries, err := os.ReadDir(baseDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -238,7 +238,7 @@ func ListAll(ctx context.Context) ([]*Workspace, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		wsPath := filepath.Join(BaseDir, entry.Name())
+		wsPath := filepath.Join(baseDir, entry.Name())
 		metaPath := filepath.Join(wsPath, MetaDir)
 		if info, err := os.Stat(metaPath); err != nil || !info.IsDir() {
 			continue
