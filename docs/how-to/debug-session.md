@@ -16,16 +16,8 @@ a1b2c3d4-e5f6-7890-abcd-ef1234567890  github:ivy/hive#132     failed      30m ag
 f9e8d7c6-b5a4-3210-fedc-ba9876543210  github:ivy/hive#145     published   2h ago
 ```
 
-Session statuses and what they mean:
-
-| Status | Meaning |
-|---|---|
-| `dispatching` | Session created, systemd unit starting |
-| `prepared` | Workspace created, agent hasn't started |
-| `running` | Agent is executing |
-| `stopped` | Agent exited normally |
-| `published` | Branch pushed, PR opened |
-| `failed` | Something went wrong (or stuck session detected by reap) |
+For status values and their meanings, see the
+[session reference](../reference/session.md#status-state-machine).
 
 ## Read session metadata
 
@@ -51,22 +43,9 @@ You can also use the issue reference (resolves to the most recent session for th
 hive cd ivy/hive#132
 ```
 
-Once inside the workspace, inspect the `.hive/` metadata directory:
-
-```bash
-ls .hive/
-```
-
-| File | Contents |
-|---|---|
-| `repo` | Repository owner/name (e.g., `ivy/hive`) |
-| `issue-number` | Issue number |
-| `session-id` | Claude session UUID (for resume) |
-| `status` | Current lifecycle state |
-| `prompt.md` | Issue body that was given to the agent |
-| `issue.json` | Full issue JSON payload |
-| `tmux-session` | Tmux session name (only while agent is running) |
-| `board-item-id` | GitHub Projects board item ID (if dispatched via poll) |
+Once inside the workspace, inspect the `.hive/` metadata directory.
+For the full file listing, see the
+[workspace layout reference](../reference/session.md#workspace-layout).
 
 Check what the agent's status was:
 
