@@ -3,6 +3,7 @@ module github.com/ivy/hive
 go 1.25.7
 
 require (
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1

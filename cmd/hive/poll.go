@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/google/uuid"
 	"github.com/ivy/hive/internal/claim"
 	"github.com/ivy/hive/internal/github"
@@ -45,6 +46,8 @@ func runPoll(cmd *cobra.Command, args []string) error {
 		"config-file", viper.ConfigFileUsed(),
 	)
 
+	_, _ = daemon.SdNotify(false, daemon.SdNotifyReady+"\nSTATUS=starting, loaded config")
+
 	// Single-shot mode: run once and exit.
 	if interval <= 0 {
 		return pollOnce(ctx)
@@ -57,18 +60,22 @@ func runPoll(cmd *cobra.Command, args []string) error {
 		slog.Error("poll cycle failed", "error", err)
 	}
 
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=idle, next poll in %s", interval))
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			_, _ = daemon.SdNotify(false, daemon.SdNotifyStopping+"\nSTATUS=shutting down")
 			slog.Info("shutting down poll loop")
 			return nil
 		case <-ticker.C:
 			if err := pollOnce(ctx); err != nil {
 				slog.Error("poll cycle failed", "error", err)
 			}
+			_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=idle, next poll in %s", interval))
 		}
 	}
 }
@@ -82,6 +89,7 @@ func pollOnce(ctx context.Context) error {
 		return fmt.Errorf("building source: %w", err)
 	}
 
+	_, _ = daemon.SdNotify(false, "STATUS=polling for ready items")
 	slog.Info("polling for ready items")
 
 	items, err := src.Ready(ctx)
@@ -94,6 +102,7 @@ func pollOnce(ctx context.Context) error {
 		return nil
 	}
 
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=found %d ready items, dispatching", len(items)))
 	slog.Info("found ready items", "count", len(items))
 
 	maxConcurrent := viper.GetInt("poll.max-concurrent")
@@ -158,6 +167,7 @@ func dispatchItem(ctx context.Context, src source.Source, item source.WorkItem, 
 		return fmt.Errorf("creating session for %s: %w", item.Ref, err)
 	}
 
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=dispatching %s", item.Ref))
 	slog.Info("dispatching run", "ref", item.Ref, "title", item.Title, "uuid", id)
 
 	// Start the systemd unit.
@@ -166,6 +176,8 @@ func dispatchItem(ctx context.Context, src source.Source, item source.WorkItem, 
 		_ = session.Remove(dataDir, id)
 		return fmt.Errorf("starting unit for %s: %w", item.Ref, err)
 	}
+
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=dispatched %s, claiming", item.Ref))
 
 	// Mark as taken on the source (e.g., move to In Progress).
 	if err := src.Take(ctx, item.Ref); err != nil {
