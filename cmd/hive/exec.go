@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,7 +14,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-const agentSystemPrompt = `Commit your work before finishing. Use /commit for each logical change — small, focused commits, not one big batch at the end. Don't leave uncommitted changes in the worktree.`
+const agentSystemPrompt = `Commit your work before finishing. Use /commit for each logical change — small, focused commits, not one big batch at the end. Don't leave uncommitted changes in the worktree.
+
+IMPORTANT: Every Ready item must produce code changes. If the issue is a design proposal or analysis task that cannot be implemented, set your completion status to false and explain why in blockers. Do not simply analyze or plan without implementing.`
 
 const maxCommitRetries = 3
 
@@ -23,6 +27,25 @@ const commitNudge = `You left uncommitted changes in the worktree. Please either
 - Explain why the changes should not be committed
 
 Then exit.`
+
+const completionSchema = `{"type":"object","properties":{"completed":{"type":"boolean","description":"Whether the task was fully implemented and committed"},"summary":{"type":"string","description":"Brief description of what was done or attempted"},"blockers":{"type":"string","description":"What prevented completion, if anything"}},"required":["completed","summary"]}`
+
+const validationPrompt = `Please provide a completion report for this task. Use the structured output tool to indicate whether you completed the implementation (with commits) or encountered blockers.`
+
+const implementationNudge = `You reported the task as completed, but there are no commits on the branch. The expectation is that Ready items produce code changes. Please implement the requested changes and commit your work. If the issue is not implementable (e.g. it's a design discussion), set completed to false and explain in blockers.`
+
+// completionReport is the structured output from validation.
+type completionReport struct {
+	Completed bool   `json:"completed"`
+	Summary   string `json:"summary"`
+	Blockers  string `json:"blockers,omitempty"`
+}
+
+// claudeResponse is the top-level JSON from `claude -p --output-format json`.
+type claudeResponse struct {
+	SessionID        string            `json:"session_id"`
+	StructuredOutput *completionReport `json:"structured_output"`
+}
 
 var execCmd = &cobra.Command{
 	Use:   "exec <workspace-path>",
@@ -118,6 +141,20 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Check for zero commits and validate completion
+	hasCommits, err := workspace.HasNewCommits(cmd.Context(), ws)
+	if err != nil {
+		slog.Warn("failed to check for commits", "error", err)
+	} else if !hasCommits {
+		slog.Warn("agent produced zero commits, validating completion status")
+		if validationErr := validateCompletion(cmd.Context(), j, ws, model); validationErr != nil {
+			if setErr := workspace.SetStatus(ws, workspace.StatusFailed); setErr != nil {
+				slog.Error("failed to set status", "error", setErr)
+			}
+			return validationErr
+		}
+	}
+
 	if err := workspace.SetStatus(ws, workspace.StatusStopped); err != nil {
 		return fmt.Errorf("set status: %w", err)
 	}
@@ -164,4 +201,103 @@ func buildNewClaudeCommand(ws *workspace.Workspace, model string, prompt string)
 		"--output-format", "json",
 		prompt,
 	}, nil
+}
+
+// validateCompletion checks whether the agent completed the task when no commits exist.
+// It uses structured output to get a completion report from the agent, then either
+// retries with a nudge (if agent claims completion) or fails with the blocker reason.
+func validateCompletion(ctx context.Context, j jail.Jail, ws *workspace.Workspace, model string) error {
+	const maxAttempts = 3
+	const tools = "Glob,Read,Bash"
+	const allowedTools = "Glob,Read,Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git status *)"
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		var prompt string
+		if attempt == 1 {
+			prompt = validationPrompt
+		} else {
+			prompt = implementationNudge
+		}
+
+		cmdArgs := []string{
+			"claude", "-p",
+			"--dangerously-skip-permissions",
+			"--resume", ws.SessionID,
+			"--output-format", "json",
+			"--json-schema", completionSchema,
+			"--tools", tools,
+			"--allowedTools", allowedTools,
+			"--model", model,
+			prompt,
+		}
+
+		slog.Debug("validating completion status", "attempt", attempt)
+
+		out, err := j.RunCapture(ctx, jail.RunOpts{
+			Workspace: ws,
+			Command:   cmdArgs,
+		})
+		if err != nil {
+			slog.Warn("validation call failed", "attempt", attempt, "error", err)
+			if attempt == maxAttempts {
+				return fmt.Errorf("validation failed after %d attempts: %w", maxAttempts, err)
+			}
+			continue
+		}
+
+		report, parseErr := parseCompletionReport(out)
+		if parseErr != nil {
+			slog.Warn("failed to parse completion report", "attempt", attempt, "error", parseErr)
+			if attempt == maxAttempts {
+				return fmt.Errorf("structured output not received after %d attempts: %w", maxAttempts, parseErr)
+			}
+			continue
+		}
+
+		if report == nil {
+			slog.Warn("structured output missing, will retry", "attempt", attempt)
+			if attempt == maxAttempts {
+				return fmt.Errorf("structured output not received after %d attempts", maxAttempts)
+			}
+			continue
+		}
+
+		// Agent claims it completed, but there are no commits — retry with nudge
+		if report.Completed {
+			slog.Warn("agent claims completion but no commits exist, retrying",
+				"attempt", attempt, "summary", report.Summary)
+			if attempt == maxAttempts {
+				return fmt.Errorf("agent reported completion but produced no commits after %d attempts: %s",
+					maxAttempts, report.Summary)
+			}
+			continue
+		}
+
+		// Agent reports blockers — fail with the reason
+		slog.Info("agent reported task not completable", "summary", report.Summary, "blockers", report.Blockers)
+		return fmt.Errorf("task not completable: %s (reason: %s)", report.Summary, report.Blockers)
+	}
+
+	return fmt.Errorf("validation did not converge after %d attempts", maxAttempts)
+}
+
+// parseCompletionReport unmarshals the claude JSON response.
+// Returns (nil, nil) when structured_output is missing (signals retry).
+// Returns (nil, err) on malformed JSON.
+func parseCompletionReport(data []byte) (*completionReport, error) {
+	var resp claudeResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+
+	if resp.StructuredOutput == nil {
+		return nil, nil
+	}
+
+	// Validate required fields
+	if resp.StructuredOutput.Summary == "" {
+		return nil, nil
+	}
+
+	return resp.StructuredOutput, nil
 }

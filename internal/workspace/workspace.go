@@ -326,6 +326,22 @@ func HasUncommittedChanges(ctx context.Context, ws *Workspace) (bool, error) {
 	return false, nil
 }
 
+// HasNewCommits returns true if the workspace branch has commits
+// ahead of main. Used to detect zero-commit agent executions.
+func HasNewCommits(ctx context.Context, ws *Workspace) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "rev-list", "--count", "main..HEAD")
+	cmd.Dir = ws.Path
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("git rev-list: %w", err)
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return false, fmt.Errorf("parsing commit count: %w", err)
+	}
+	return count > 0, nil
+}
+
 // CommitAll stages all changes (excluding .hive/) and creates a commit
 // with the given message. Returns nil if there is nothing to commit.
 func CommitAll(ctx context.Context, ws *Workspace, message string) error {

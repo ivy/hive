@@ -22,7 +22,7 @@ func initBareRepo(dir string) string {
 	Expect(os.MkdirAll(repoPath, 0o755)).To(Succeed())
 
 	cmds := [][]string{
-		{"git", "init"},
+		{"git", "init", "-b", "main"},
 		{"git", "config", "user.email", "test@test.com"},
 		{"git", "config", "user.name", "Test"},
 		{"git", "commit", "--allow-empty", "-m", "initial"},
@@ -534,6 +534,47 @@ var _ = Describe("Workspace", func() {
 			os.Remove(filepath.Join(ws.Path, ".hive", "session-id"))
 			_, err := workspace.ReadSessionID(ws)
 			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("HasNewCommits", func() {
+		var ws *workspace.Workspace
+
+		BeforeEach(func() {
+			var err error
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 100, uuid.New().String())
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			if ws != nil {
+				os.RemoveAll(ws.Path)
+				cmd := exec.Command("git", "worktree", "prune")
+				cmd.Dir = repoPath
+				_ = cmd.Run()
+				cmd = exec.Command("git", "branch", "-D", ws.Branch)
+				cmd.Dir = repoPath
+				_ = cmd.Run()
+			}
+		})
+
+		It("returns false on a fresh worktree with no new commits", func() {
+			hasCommits, err := workspace.HasNewCommits(ctx, ws)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasCommits).To(BeFalse())
+		})
+
+		It("returns true after a commit is added", func() {
+			// Add a file and commit it.
+			err := os.WriteFile(filepath.Join(ws.Path, "test-change.txt"), []byte("new work"), 0o644)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = workspace.CommitAll(ctx, ws, "test: add new work")
+			Expect(err).NotTo(HaveOccurred())
+
+			hasCommits, err := workspace.HasNewCommits(ctx, ws)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hasCommits).To(BeTrue())
 		})
 	})
 })
