@@ -17,7 +17,7 @@ type Jail interface {
 
 | Method | Used By | Description |
 |--------|---------|-------------|
-| `Run` | `exec` | Executes a command inside the jail with stdin/stdout/stderr connected to the current terminal. |
+| `Run` | `exec` | Executes a command inside the jail with stdout/stderr connected to the current terminal. Stdin is not connected. |
 | `RunCapture` | `publish` (PR drafting) | Executes a command inside the jail and captures stdout as `[]byte`. Stderr still goes to `os.Stderr`. |
 
 ### Constructors
