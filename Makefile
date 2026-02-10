@@ -1,11 +1,13 @@
 BINARY          := hive
 PREFIX          := $(HOME)/.local/bin
 SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
+VERSION         := $(shell date -u '+%Y%m%d.%H%M%S')
+LDFLAGS         := -X main.version=$(VERSION)
 
 .PHONY: build install install-units uninstall-units
 
 build:
-	go build -o $(BINARY) ./cmd/hive/
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/hive/
 
 install: build
 	install -d $(PREFIX)
