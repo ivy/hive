@@ -1,20 +1,41 @@
-# Sandbox config for developing hive against its own repo.
-# The real production config lives in ivy/dotfiles.
-# Each target repo gets its own .hive.toml with repo-specific IDs.
+# Hive configuration.
+# Copy to ~/.config/hive/config.toml (or ~/.config/hive/<instance>.toml
+# for named instances).
 
 [poll]
+# How often to check for ready items. If unset, poll runs once and exits.
 # interval = "5m"
 
+# Maximum concurrent hive-run@* units. 0 = unlimited.
+# max-concurrent = 4
+
+# Instance name for logging and session tracking.
+# instance = "default"
+
+[reap]
+# How long to keep published sessions before cleanup.
+# published-retention = "24h"
+
+# How long to keep failed sessions before cleanup (longer for debugging).
+# failed-retention = "72h"
+
 [security]
+# Issue authors allowed to trigger runs (fail-closed: empty = nobody).
 allowed-users = ["ivy"]
 
 [jail]
 backend = "systemd-run"
 
 [github]
+# GitHub Projects board settings. All IDs come from the GraphQL API.
 project-id = "29"
 project-node-id = "PVT_kwHOADgWUM4BOsG3"
 status-field-id = "PVTSSF_lAHOADgWUM4BOsG3zg9UQiM"
+
+# Single-select option IDs for board column transitions.
 in-progress-option-id = "6e4a1660"
 in-review-option-id = "1b866fe9"
+ready-option-id = "abc12345"
+
+# Exact status name to filter for ready items.
 ready-status = "Ready 🤖"
