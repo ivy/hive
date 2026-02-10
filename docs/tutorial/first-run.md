@@ -98,27 +98,22 @@ ls <workspace-path>/.hive/
 ```
 
 ```
-board-item-id   issue-number   prompt.md    session-id
-issue.json      repo           status
+issue-number   prompt.md    session-id
+issue.json     repo         status
 ```
 
-Key files:
-
-| File | Contents |
-|------|----------|
-| `prompt.md` | The issue body, used as the agent's instructions |
-| `repo` | `owner/repo` |
-| `issue-number` | The issue number |
-| `session-id` | UUID linking this workspace to its session |
-| `status` | Current stage (`prepared` right now) |
+The two files you'll interact with most are `prompt.md` (the issue body
+that becomes the agent's instructions) and `status` (the current lifecycle
+stage — `prepared` right now). For the full metadata layout, see
+[Session & Data Reference](../reference/session.md#workspace-layout).
 
 The workspace is a real git worktree branched from `main`. The agent will
 work here exactly as if it cloned the repo fresh.
 
 ## Step 2: Run the agent
 
-The `exec` command launches Claude Code inside the workspace. It sandboxes
-the agent using `systemd-run` so it cannot touch files outside the worktree.
+The `exec` command launches Claude Code inside a
+[sandboxed workspace](../explanation/security-model.md#credential-isolation-in-practice).
 
 ```bash
 hive exec <workspace-path>
@@ -140,9 +135,8 @@ When the agent finishes:
 Agent finished: /home/you/.local/share/hive/workspaces/a1b2c3d4-...
 ```
 
-If the agent leaves uncommitted changes, hive automatically resumes the
-session up to three times with a nudge to commit. Check the workspace
-status:
+If the agent leaves uncommitted changes, hive retries automatically
+(see [lifecycle](../lifecycle.md#session-lifecycle)). Check the workspace status:
 
 ```bash
 cat <workspace-path>/.hive/status
@@ -198,24 +192,8 @@ hive run your-org/your-repo#42
 This runs the full pipeline: prepare the workspace, launch the agent, and
 publish the PR. One command, one issue, one PR.
 
-### Useful flags
-
-| Flag | Effect |
-|------|--------|
-| `--no-publish` | Stop after the agent finishes. Review the workspace before publishing. |
-| `--model <name>` | Choose a Claude model (default: `sonnet`). |
-
-Example — run the agent but hold off on publishing:
-
-```bash
-hive run your-org/your-repo#42 --no-publish
-```
-
-Later, publish manually:
-
-```bash
-hive publish ~/.local/share/hive/workspaces/<uuid>
-```
+Add `--no-publish` to stop after the agent finishes so you can review
+before publishing, then run `hive publish <workspace-path>` when ready.
 
 ## Monitor sessions
 
@@ -248,15 +226,8 @@ workspaces:
 hive reap
 ```
 
-By default, published sessions are kept for 24 hours and failed sessions
-for 72 hours. Override with flags:
-
-```bash
-hive reap --published-retention 1h --failed-retention 24h
-```
-
-Reap also recovers stuck sessions — if a systemd unit died without cleaning
-up, reap marks the session as failed and releases the claim.
+Reap also recovers stuck sessions. See the [CLI reference](../reference/cli.md#hive-reap)
+for retention flags.
 
 ## What you just did
 
