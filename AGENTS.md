@@ -9,7 +9,7 @@ See `docs/vision.md` for motivation, `docs/core-principles.md` for decision filt
 ```
 cmd/hive/               # CLI entry point (cobra commands)
 internal/
-  authz/                # Issue author authorization
+  authz/                # Issue author authorization (fail-closed)
   claim/                # Atomic claim files for work-item dedup
   github/               # Board status, issue fetch, PR creation, push
   jail/                 # Execution environment (systemd-run, swappable)
@@ -19,7 +19,7 @@ internal/
   source/ghprojects/    # GitHub Projects adapter implementing Source
   workspace/            # Git worktree creation, metadata, lifecycle
 contrib/
-  systemd/              # systemd unit templates (poll, run, reap, target)
+  systemd/              # systemd unit templates (poll, run, reap, timer, target)
 docs/
   vision.md             # Why this project exists
   core-principles.md    # Decision filters (6 principles)
@@ -27,6 +27,11 @@ docs/
   lifecycle.md          # Dispatch, session lifecycle, systemd units, claims
   prototype-learnings.md # Constraints from the shell prototype
   adrs/                 # Architecture Decision Records
+  reference/            # CLI, config, session schema, jail/source interfaces, systemd units
+  how-to/               # Install, configure, deploy, debug sessions, write issues
+  explanation/          # Security model and threat analysis
+  tutorial/             # First-run walkthrough
+  prototype/            # Original prototype spec and mechanics
 ```
 
 ## Project Board
@@ -35,13 +40,13 @@ docs/
 
 | Column | Option ID | Role |
 |--------|-----------|------|
-| Triage 📥 | `0282c225` | New issues land here |
-| Icebox 🧊 | `8305ec23` | Parked/deferred |
-| Planning 🧠 | `6d145703` | Needs design/breakdown |
-| Ready 🤖 | `11a2b218` | `hive poll` picks these up |
-| In Progress 🚧 | `dacd8d8c` | Agent is working |
-| In Review 👀 | `2f8088e7` | PR opened, awaiting review |
-| Done ✅ | `8ee47ba7` | Merged |
+| Triage | `0282c225` | New issues land here |
+| Icebox | `8305ec23` | Parked/deferred |
+| Planning | `6d145703` | Needs design/breakdown |
+| Ready | `11a2b218` | `hive poll` picks these up |
+| In Progress | `dacd8d8c` | Agent is working |
+| In Review | `2f8088e7` | PR opened, awaiting review |
+| Done | `8ee47ba7` | Merged |
 
 Status field ID: `PVTSSF_lAHOADgWUM4BOoACzg9RZqI`. Project node ID: `PVT_kwHOADgWUM4BOoAC`. Configured in `~/.config/hive/config.toml` — see `hive.example.toml` for format.
 
@@ -70,7 +75,7 @@ In Review ←──────────  push branch, open PR
 | `hive cd` | Spawns shell in session workspace | None |
 | `hive attach` | Attaches to agent tmux session | None |
 
-Deprecated: `hive list` (alias for `ls`), `hive cleanup` (use `reap`). See `docs/architecture.md`.
+Deprecated: `hive list` (alias for `ls`), `hive cleanup` (use `reap`).
 
 ## Tech Stack
 
@@ -79,7 +84,7 @@ Deprecated: `hive list` (alias for `ls`), `hive cleanup` (use `reap`). See `docs
 | CLI | cobra + pflag |
 | Config | viper (`~/.config/hive/config.toml` or per-instance `<name>.toml`) |
 | Dispatch | systemd user units (`hive-run@{uuid}.service`) |
-| Logging | `log/slog` + `systemd/slog-journal` |
+| Logging | `log/slog` (TextHandler to stderr) |
 | GitHub | `gh` CLI via `os/exec` |
 | Sandbox | `systemd-run` via `os/exec` (behind `Jail` interface) |
 | Testing | Ginkgo/Gomega (BDD) |
@@ -115,3 +120,7 @@ Tool versions managed by mise — see `mise.toml`. Pre-commit hooks managed by h
 - `docs/core-principles.md` — 6 decision filters (workspace as contract, credential isolation, environment parity, etc.)
 - `docs/prototype-learnings.md` — constraints discovered through real usage
 - `docs/adrs/` — architecture decision records (start with `001-swappable-jail-backends.md`)
+- `docs/reference/` — CLI commands, config keys, session schema, jail and source interfaces, systemd units
+- `docs/how-to/` — install, configure, deploy, debug sessions, write agent-friendly issues
+- `docs/explanation/security-model.md` — threat model, trust boundaries, isolation mechanisms
+- `docs/tutorial/first-run.md` — step-by-step from issue to PR
