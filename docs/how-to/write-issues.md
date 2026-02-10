@@ -2,12 +2,6 @@
 
 GitHub issues are the primary interface between you and hive's agents. The issue body becomes the agent's prompt verbatim — what you write is what the agent reads as its instruction.
 
-## Why issue quality matters
-
-Hive uses the issue body as the prompt for Claude Code. The agent receives the text of `.hive/prompt.md` (which is the issue body) and works from there. No separate prompt engineering is needed if the issue is well-written.
-
-From real usage: a well-structured issue for adding `fetch.prune = true` to git config produced correct code, tests, and conventional commits in 70 seconds at $0.45 (see `docs/prototype-learnings.md`).
-
 ## Structure of a good issue
 
 ### Title: what, not how
@@ -132,15 +126,6 @@ TemporaryFileSystem approach while still allowing bind mounts.
 
 Split these into three issues. Each gets its own session, branch, and PR.
 
-## Authorization
-
-Issues must be authored by a user in the `security.allowed-users` config list. Hive is fail-closed: if the author isn't in the list, the issue is silently skipped during poll and explicitly rejected during manual runs.
-
-## Board workflow
-
-1. Create the issue with a clear body
-2. Add it to the GitHub Projects board
-3. Move it to the "Ready" column (must match `github.ready-status` in config, e.g., "Ready 🤖")
-4. `hive poll` picks it up, claims it, and dispatches a run
-5. The board item moves to "In Progress" automatically
-6. On success, it moves to "In Review" with a PR link
+For authorization rules and the board workflow, see the
+[configuration reference](../reference/config.md) and
+[source interface reference](../reference/source-interface.md).

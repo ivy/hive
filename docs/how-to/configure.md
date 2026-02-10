@@ -11,12 +11,8 @@ mkdir -p ~/.config/hive
 cp hive.example.toml ~/.config/hive/config.toml
 ```
 
-Hive looks for config in this order:
-
-1. `--config <path>` flag (overrides everything)
-2. `./config.toml` (current directory)
-3. `$XDG_CONFIG_HOME/hive/config.toml`
-4. `~/.config/hive/config.toml`
+For the full config search order, see the
+[configuration reference](../reference/config.md).
 
 ## Find your GitHub Projects IDs
 
