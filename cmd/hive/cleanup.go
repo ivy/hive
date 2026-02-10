@@ -11,11 +11,12 @@ import (
 )
 
 var cleanupCmd = &cobra.Command{
-	Use:   "cleanup [workspace-id]",
-	Short: "Tear down workspace(s)",
-	Long:  "Removes a workspace by ID, or all workspaces with --all.",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runCleanup,
+	Use:        "cleanup [workspace-id]",
+	Short:      "Tear down workspace(s)",
+	Long:       "Removes a workspace by ID, or all workspaces with --all.",
+	Deprecated: "use 'hive reap' instead",
+	Args:       cobra.MaximumNArgs(1),
+	RunE:       runCleanup,
 }
 
 func init() {
