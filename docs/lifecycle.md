@@ -1,6 +1,6 @@
 # Dispatch & Lifecycle
 
-End-state specification for how hive dispatches work, manages agent lifecycles, and cleans up after itself. Supersedes the current fire-and-forget model where poll spawns child processes that die with it.
+How hive dispatches work, manages agent lifecycles, and cleans up after itself. This document focuses on the *why* behind the design — the rationale, trade-offs, and failure recovery thinking. For interface definitions and directory layouts, see the [Architecture](architecture.md) and reference docs.
 
 Motivated by [#43] (zero-downtime deploys) and [#28] (agents as systemd units). Informed by [#11] (recovery/state management), [#22] (Unix philosophy evaluation), and [#29] (multi-project support).
 
@@ -10,6 +10,19 @@ Motivated by [#43] (zero-downtime deploys) and [#28] (agents as systemd units). 
 - **No in-memory state crosses process boundaries.** Components communicate through the filesystem and systemd unit state. ([#11], Core Principle 1: Workspace as Contract)
 - **The work source is an abstraction.** Hive's core (sessions, workspaces, claims, dispatch, reap) has no knowledge of where work items come from. GitHub Projects is one source implementation. The source could be Gitea, Linear, a directory of markdown files, or anything else. ([#29])
 - **Session metadata is outside the agent's trust boundary.** The agent sees its workspace directory and nothing else. Dispatch metadata, claim state, and source references are not accessible to the agent. ([#50], Core Principle 2: Credential Isolation)
+
+## Why systemd owns process lifecycles
+
+The shell prototype ran agents as child processes of the poll daemon. This meant agents died whenever poll restarted — a binary upgrade killed all in-flight work. Each run is now its own systemd unit (`hive-run@{uuid}.service`), completely independent of poll's lifecycle.
+
+This separation has cascading benefits:
+
+- **Zero-downtime deploys** — stop poll, upgrade the binary, restart poll. Running agents are unaffected because they're separate units. ([#43])
+- **Crash isolation** — a failed run doesn't bring down poll or other runs. systemd reports the failure per-unit.
+- **Observability** — `systemctl --user list-units 'hive-run@*'` shows all active runs. `journalctl --user -u hive-run@{uuid}` shows logs for a specific run. No more `ps aux | grep hive`.
+- **Resource accounting** — systemd's cgroup integration gives per-unit CPU and memory tracking for free.
+
+Poll is a daemon, not a systemd timer. An earlier design used an external timer + oneshot service, but a long-running daemon simplifies operations (one unit instead of two) and dispatches immediately on startup rather than waiting for the first timer activation. See [PR #40] (`a438ce0`), which closed [#35].
 
 ## Components
 
@@ -24,15 +37,13 @@ Long-lived daemon. Finds ready work items from a source, claims them locally, an
 - Marks the item as taken on the source (e.g., moves to In Progress)
 - **Stateless between restarts** — all dispatch state is on disk (claims, sessions)
 
-Poll is a daemon, not a systemd timer. An earlier design used an external timer + oneshot service, but a long-running daemon simplifies operations (one unit instead of two) and dispatches immediately on startup rather than waiting for the first timer activation. See [PR #40] (`a438ce0`), which closed [#35].
-
 Does NOT monitor runs, track child processes, or manage any lifecycle beyond dispatch. ([#22], Core Principle 3: Single Responsibility)
 
 ### hive run (worker)
 
 Runs as a oneshot systemd unit (`hive-run@{uuid}.service`). Orchestrates one work item end-to-end. ([#28])
 
-- Reads session metadata from `~/.local/share/hive/sessions/{uuid}.json`
+- Reads session metadata from the session JSON file
 - Resolves the source ref, repo path, and any source-specific identifiers from the session
 - Executes: prepare → exec → publish
 - On success: session status → `published`, notifies source (e.g., board → In Review)
@@ -50,184 +61,16 @@ Runs on a systemd timer. Scans sessions and workspaces. Cleans up finished work.
 - Stale claims (session in non-terminal state, no active systemd unit): mark failed, notify source to release the item, release claim ([#39])
 - **Idempotent** — safe to run at any frequency
 
-## Work Source Interface
-
-The source is the boundary between hive's core and wherever work items come from. It is an abstraction — hive core never imports source-specific packages. Same pattern as the swappable jail interface ([ADR 001]). ([#29])
-
-```go
-type Source interface {
-    // Ready returns work items available for dispatch.
-    Ready(ctx context.Context) ([]WorkItem, error)
-
-    // Take marks an item as claimed on the remote side.
-    Take(ctx context.Context, ref string) error
-
-    // Complete marks an item as done on the remote side.
-    Complete(ctx context.Context, ref string) error
-
-    // Release marks an item as available again on the remote side.
-    Release(ctx context.Context, ref string) error
-}
-
-type WorkItem struct {
-    Ref      string            // opaque identifier (source-specific)
-    Repo     string            // repository location (e.g., "ivy/hive")
-    Title    string            // human-readable summary
-    Prompt   string            // agent instructions (e.g., issue body)
-    Metadata map[string]string // source-specific data (board-item-id, labels, etc.)
-}
-```
-
-The `Ref` is an opaque string. Hive hashes it for the claim key but never parses it. The source adapter produces refs and knows how to act on them.
-
-GitHub Projects is the initial implementation. The interface accommodates any source that can answer "what's ready?" and accept status updates.
-
-## Directory Layout
-
-All hive data lives under `~/.local/share/hive/` (XDG_DATA_HOME). Workspaces survive reboots. ([#21])
-
-```
-~/.local/share/hive/
-├── claims/
-│   └── <hash>                  # claim file (content: session UUID)
-├── sessions/
-│   └── <uuid>.json             # session metadata
-└── workspaces/
-    └── <uuid>/                 # git worktree (agent's sandbox)
-```
-
-### claims/
-
-One file per active work item. The filename is a hash (SHA-256, truncated) of the source ref. The content is the session UUID.
-
-- **Created by poll** with `O_EXCL` — atomic, race-free dedup
-- **Removed by run** on completion, or by **reap** on expiry/failure
-- `ls claims/` shows all in-flight work
-- Existence check is O(1) — no scanning
-
-### sessions/
-
-One JSON file per session, keyed by UUID. Contains everything needed to run the work item:
-
-```json
-{
-  "id": "00112233-4455-6677-8899-ccddeeffaabb",
-  "ref": "github:ivy/hive#43",
-  "repo": "ivy/hive",
-  "title": "Zero-downtime deploys",
-  "prompt": "...",
-  "source_metadata": {
-    "board_item_id": "PVTI_...",
-    "project_node_id": "PVT_..."
-  },
-  "status": "running",
-  "created_at": "2026-02-10T12:00:00Z",
-  "poll_instance": "default"
-}
-```
-
-This file is **outside the workspace directory** — the agent cannot read or modify it. The jail mounts only `workspaces/<uuid>/`. Session metadata includes source-specific fields (like board-item-id) that would be dangerous or confusing inside the agent's sandbox. ([#50], Core Principle 2: Credential Isolation)
-
-### workspaces/
-
-One directory per session, keyed by UUID. This is the git worktree where the agent works. The jail mounts this directory and nothing above it. ([#50])
-
-```
-workspaces/<uuid>/
-├── <repo contents>             # git worktree
-├── .git                        # → main repo's .git/worktrees/<name>
-└── .claude/                    # agent session data (bind-mounted read-write)
-```
-
-## systemd Units
-
-```
-~/.config/systemd/user/
-├── hive@.target                 # meta: groups poll + reap per instance
-├── hive-poll@.service           # daemon: scheduler
-├── hive-run@.service            # oneshot: worker (UUID instance)
-├── hive-reap@.service           # oneshot: janitor
-└── hive-reap@.timer             # periodic trigger for reap
-```
-
-### <hive@.target>
-
-Groups poll and reap for a named instance. One command to start/stop everything. ([#29])
-
-```ini
-[Unit]
-Description=Hive orchestrator: %I
-Wants=hive-poll@%i.service hive-reap@%i.timer
-```
-
-`systemctl --user start hive@default.target` brings up everything.
-
-### <hive-poll@.service>
-
-```ini
-[Unit]
-Description=Hive poll: %I
-PartOf=hive@%i.target
-
-[Service]
-Type=simple
-ExecStart=%h/.local/bin/hive poll --config %h/.config/hive/%I.toml
-Restart=on-failure
-RestartSec=30
-Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
-```
-
-Reads instance-specific config from `~/.config/hive/<instance>.toml`. The config defines the source type, source settings (project ID, status field IDs, etc.), poll interval, and repo discovery rules.
-
-Restartable at any time. No children to orphan — runs are separate units. ([#43])
-
-Future: `Type=notify` with sd_notify for accurate readiness reporting. ([#9])
-
-### <hive-run@.service>
-
-```ini
-[Unit]
-Description=Hive run: %I
-
-[Service]
-Type=oneshot
-ExecStart=%h/.local/bin/hive run %i
-TimeoutStartSec=infinity
-Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
-```
-
-Not installed (no `[Install]` section) — started on-demand by poll. The `%i` is a UUID. `TimeoutStartSec=infinity` because agent runs have no predictable upper bound. ([#28])
-
-Future: per-unit structured journal fields for filtering by repo/issue. ([#46])
-
-### <hive-reap@.timer> / <hive-reap@.service>
-
-```ini
-# hive-reap@.timer
-[Unit]
-Description=Hive reap timer: %I
-PartOf=hive@%i.target
-
-[Timer]
-OnCalendar=hourly
-Persistent=true
-
-# hive-reap@.service
-[Unit]
-Description=Hive reap: %I
-
-[Service]
-Type=oneshot
-ExecStart=%h/.local/bin/hive reap --config %h/.config/hive/%I.toml
-Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
-```
-
-## Claim-Based Dedup
+## Claim-based dedup
 
 Two gates prevent duplicate dispatch: ([#11])
 
 1. **Source gate** — only ready items are returned by the source. Items already taken (In Progress, In Review, Done) are filtered at the source.
 2. **Claim gate** — local claim file, created atomically with `O_EXCL`.
+
+Why two gates? The source gate is necessary but not sufficient. Between the moment poll calls `source.Ready()` and the moment it calls `source.Take()`, the source could return the same item on a concurrent poll tick (or on a restart). The local claim file closes this window — `O_EXCL` guarantees only one process wins the race.
+
+The claim key is a truncated SHA-256 hash of the source ref. Hive never parses the ref — it's opaque. The source adapter produces refs and knows how to act on them.
 
 ### Claim lifecycle
 
@@ -254,6 +97,8 @@ reap: for expired sessions: remove workspace, session file, claim (if still pres
 
 ### Crash scenarios
 
+Every crash point has a recovery path. This is the core design constraint — no crash should leave work permanently stuck.
+
 | Crash point | Claim state | Session state | Unit state | Recovery |
 |---|---|---|---|---|
 | After claim, before unit start | Claim exists | Session file written | No unit | Reap: stale session + no unit → release claim, notify source |
@@ -262,7 +107,9 @@ reap: for expired sessions: remove workspace, session file, claim (if still pres
 | Run succeeds, claim removal fails | Claim exists | Published | Inactive | Reap: terminal session + claim still present → remove claim |
 | Poll restarts mid-cycle | Some claims placed | Some sessions written | Some units started | Poll restarts: source gate + claim gate prevent re-dispatch of in-flight work ([#43]) |
 
-## Session Lifecycle
+The key insight is that reap is the safety net. It scans for inconsistencies between claim state, session state, and systemd unit state, and resolves them. This is why reap runs on a timer — it's the eventual consistency mechanism for the dispatch pipeline.
+
+## Session lifecycle
 
 ```
                     ┌─ dispatching ─┐
@@ -289,9 +136,11 @@ Status transitions:
 
 Terminal states: `published`, `failed`.
 
-## Workspace Lifecycle
+For session JSON structure and storage details, see [Architecture — Data Layout](architecture.md#data-layout).
 
-Workspaces are git worktrees created by the `prepare` stage inside `~/.local/share/hive/workspaces/<uuid>/`. ([#21])
+## Workspace lifecycle
+
+Workspaces are git worktrees created by the `prepare` stage. ([#21])
 
 ```
 prepare     creates worktree at workspaces/<uuid>/
@@ -305,37 +154,18 @@ Reap replaces the current manual `hive cleanup` command. Retention periods are c
 - Published sessions: short retention (workspace is low-value after PR is open)
 - Failed sessions: longer retention (workspace preserved for debugging)
 
+For workspace directory structure and metadata files, see [Architecture — Data Layout](architecture.md#data-layout).
+
 ## Concurrency
 
 Poll respects a `max-concurrent` limit when dispatching. ([#41]) Before starting a new unit, poll counts active `hive-run@*` units via systemctl. If at capacity, remaining ready items are skipped and picked up on the next tick.
 
 Future: auto-detect a sensible default based on system resources. ([#42])
 
-## CLI Changes
+## What changed from the prototype
 
-| Command | Current | End state |
-|---------|---------|-----------|
-| `hive run <ref>` | Accepts `owner/repo#123`, runs inline | Also accepts `<uuid>`, reads session metadata |
-| `hive cd <ref\|uuid>` | Does not exist | Spawns `$SHELL` in the workspace of the specified session |
-| `hive attach <ref\|uuid>` | Uses tmux session name | Spawns `$SHELL` or attaches to the agent session in the workspace |
-| `hive ls` | `hive list`, lists workspaces from `/tmp/hive/` | Lists sessions from `~/.local/share/hive/sessions/` |
-| `hive cleanup` | Manual, removes all or by ID | Replaced by automated `hive reap` |
-
-### Resolving `<ref|uuid>`
-
-`hive cd`, `hive attach`, and other session-aware commands accept either a work item ref (e.g., `ivy/hive#43`) or a session UUID. Resolution order:
-
-1. If the argument looks like a UUID, look up `sessions/<uuid>.json` directly.
-2. Otherwise, treat it as a source ref — scan `claims/` for a matching claim to find the active session. If no active claim, find the most recent session matching that ref.
-
-This means `hive cd ivy/hive#43` lands you in the workspace of the latest session for that ticket, and `hive cd 00112233-...` targets a specific session. Both spawn `$SHELL` in the workspace directory.
-
-For manual use, `hive run owner/repo#123` generates its own UUID, creates the session, and runs inline (no systemd unit). This preserves the current manual workflow. ([#22])
-
-## What Changes from Today
-
-| Concern | Current | End state |
-|---------|---------|-----------|
+| Concern | Prototype | Current design |
+|---------|-----------|----------------|
 | Dispatch | `exec.Command` child process | `systemctl --user start hive-run@{uuid}` ([#28]) |
 | Agent survival on deploy | Agents die with poll daemon | Agents in own units, unaffected ([#43]) |
 | Lifecycle monitoring | None (fire-and-forget) | systemd unit state + session files ([#9], [#28]) |
