@@ -222,7 +222,7 @@ func countActiveRuns(ctx context.Context) (int, error) {
 
 // startRunUnit starts a hive-run@{uuid} systemd user unit.
 func startRunUnit(ctx context.Context, uuid string) error {
-	cmd := exec.CommandContext(ctx, "systemctl", "--user", "start",
+	cmd := exec.CommandContext(ctx, "systemctl", "--user", "start", "--no-block",
 		fmt.Sprintf("hive-run@%s.service", uuid))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("systemctl start hive-run@%s: %s: %w", uuid, string(out), err)
