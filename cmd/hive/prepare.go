@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ivy/hive/internal/authz"
 	"github.com/ivy/hive/internal/github"
+	"github.com/ivy/hive/internal/session"
 	"github.com/ivy/hive/internal/workspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -115,4 +116,33 @@ func runPrepare(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Branch: %s\n", ws.Branch)
 	fmt.Printf("Issue: %s\n", issue.Title)
 	return nil
+}
+
+// prepareFromSession creates a workspace from session data without fetching
+// from GitHub. Used by the UUID path in runFromSession — the session already
+// has the prompt and title from poll's earlier fetch.
+func prepareFromSession(cmd *cobra.Command, sess *session.Session, repo string, issueNumber int) (*workspace.Workspace, error) {
+	localPath := repoPath(repo)
+	if _, err := os.Stat(localPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("repo not found on disk: %s (expected at %s)", repo, localPath)
+	}
+
+	slog.Info("preparing workspace from session", "repo", repo, "issue", issueNumber, "uuid", sess.ID)
+
+	ws, err := workspace.Create(cmd.Context(), localPath, repo, issueNumber, sess.ID)
+	if err != nil {
+		return nil, fmt.Errorf("create workspace: %w", err)
+	}
+
+	slog.Info("created workspace", "path", ws.Path, "branch", ws.Branch)
+
+	// Write prompt from session data
+	if err := workspace.WritePrompt(ws, sess.Prompt); err != nil {
+		return nil, fmt.Errorf("write prompt: %w", err)
+	}
+
+	fmt.Printf("Workspace ready: %s\n", ws.Path)
+	fmt.Printf("Branch: %s\n", ws.Branch)
+	fmt.Printf("Session: %s\n", sess.ID)
+	return ws, nil
 }
