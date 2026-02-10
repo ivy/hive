@@ -13,9 +13,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+var version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "hive",
-	Short: "Agent orchestrator — turns GitHub issues into pull requests",
+	Use:     "hive",
+	Short:   "Agent orchestrator — turns GitHub issues into pull requests",
+	Version: version,
 	Long: `Hive dispatches Claude Code agents in isolated workspaces.
 It polls a GitHub Projects board for ready items, creates git worktrees,
 runs agents inside sandboxed environments, and opens PRs with the results.`,
@@ -52,6 +55,8 @@ func initConfig() {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			fmt.Fprintf(os.Stderr, "warning: config file: %v\n", err)
 		}
+	} else {
+		slog.Info("loaded config", "file", viper.ConfigFileUsed())
 	}
 }
 
@@ -74,6 +79,7 @@ func setupLogger() *slog.Logger {
 
 func main() {
 	setupLogger()
+	slog.Info("starting hive", "version", version)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
