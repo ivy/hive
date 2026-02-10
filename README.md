@@ -1,22 +1,22 @@
 # Hive
 
-Personal agent orchestrator. Turns a GitHub Projects backlog into pull requests
-by dispatching Claude Code agents in isolated workspaces on a home server.
+Personal agent orchestrator. Turns a GitHub Projects backlog into pull requests by dispatching Claude Code agents in isolated workspaces on a home server.
 
 > [!CAUTION]
-> This is an early experiment — built for personal use on a single home server.
+> Early experiment — built for personal use on a single home server.
 > APIs, config formats, and workspace conventions will change without notice.
-> Not recommended for production use.
 
 ## How It Works
 
 ```
 GitHub Projects board          Hive                          Agent (Claude Code)
 ─────────────────────          ────                          ───────────────────
-Ready 🤖  ──poll──→  prepare → worktree + metadata
-                               exec ──────────────→  edit, test, commit
-                               publish ← result
+Ready 🤖  ──poll──→  claim + session + systemd dispatch
+                     prepare → worktree + metadata
+                     exec ──────────────→  edit, test, commit
+                     publish ← result
 In Review 👀 ←────── push branch, open PR
+                     reap: cleanup expired sessions
 ```
 
 1. Drag an issue to **Ready** on your project board
@@ -28,217 +28,86 @@ In Review 👀 ←────── push branch, open PR
 ## Quick Start
 
 ```bash
-# 1. Build
-go build -o hive ./cmd/hive/
+# Build and install
+git clone https://github.com/ivy/hive.git
+cd hive
+mise install          # install toolchain
+make install          # binary → ~/.local/bin/hive
 
-# 2. Ensure target repos are cloned at the expected path
-#    ivy/dotfiles#143 → ~/src/github.com/ivy/dotfiles/
-ls ~/src/github.com/ivy/dotfiles
+# Create a minimal config
+mkdir -p ~/.config/hive
+cp hive.example.toml ~/.config/hive/config.toml
+# Edit config.toml with your GitHub Projects IDs and allowed-users
 
-# 3. Look up your project board field IDs
-gh project field-list 10 --owner @me
-
-# 4. Create .hive.toml with the IDs from step 3
-cat .hive.toml
-
-# 5. Run a single issue end-to-end (prepare → exec → publish)
-./hive run ivy/dotfiles#143
-
-# 6. Or poll the board to process all Ready items
-./hive poll
+# Run a single issue end-to-end
+hive run your-org/your-repo#42
 ```
 
-See [Setup](#setup) for details on each step.
+`hive run` chains prepare → exec → publish into one command. For step-by-step control, run each stage independently — see the [tutorial](docs/tutorial/first-run.md).
 
 ## Requirements
 
-- Linux with systemd (process-level sandboxing via `systemd-run`)
-- Go 1.25+
-- [gh](https://cli.github.com/) CLI (authenticated)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
-- [mise](https://mise.jdx.dev/) (tool version management)
+| Dependency | Purpose |
+|---|---|
+| Linux + systemd | Process sandboxing via `systemd-run --user` |
+| [Go](https://go.dev/) 1.25+ | Build from source |
+| [gh](https://cli.github.com/) CLI | GitHub API access (authenticated) |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Agent runtime |
+| [mise](https://mise.jdx.dev/) | Tool version management |
 
-## Setup
+## Commands
 
-### Build
+| Command | Does |
+|---|---|
+| `hive poll` | Query board for ready items, claim and dispatch |
+| `hive run` | Orchestrate prepare → exec → publish |
+| `hive prepare` | Create workspace from issue |
+| `hive exec` | Launch agent in sandboxed workspace |
+| `hive publish` | Push branch, open PR |
+| `hive reap` | Clean up expired sessions, recover stuck items |
+| `hive ls` | List sessions |
+| `hive cd` | Shell into session workspace |
+| `hive attach` | Attach to running agent's tmux session |
 
-```bash
-go build -o hive ./cmd/hive/
-```
+## Documentation
 
-### Repo Discovery
+### [Tutorial](docs/tutorial/)
 
-Hive finds repos on disk by convention:
+- [First run](docs/tutorial/first-run.md) — from issue to pull request, step by step
 
-```
-~/src/github.com/<owner>/<repo>/
-```
+### [How-to guides](docs/how-to/)
 
-An issue on `ivy/dotfiles#143` maps to `~/src/github.com/ivy/dotfiles/`. If the
-repo isn't at that path, `prepare` will fail.
+- [Install](docs/how-to/install.md) — build, install binary and systemd units
+- [Configure](docs/how-to/configure.md) — set up config.toml with GitHub Projects IDs
+- [Deploy](docs/how-to/deploy.md) — run as a persistent systemd service
+- [Write issues](docs/how-to/write-issues.md) — craft issues that produce good PRs
+- [Debug a session](docs/how-to/debug-session.md) — inspect and troubleshoot agent runs
 
-### Configuration
+### [Reference](docs/reference/)
 
-Create `.hive.toml` in the repo you're running hive from (or pass `--config`):
+- [CLI](docs/reference/cli.md) — all commands, flags, and environment variables
+- [Configuration](docs/reference/config.md) — config.toml keys and defaults
+- [Session & data](docs/reference/session.md) — session lifecycle, data layout, status transitions
+- [Systemd units](docs/reference/systemd-units.md) — unit templates and instance naming
+- [Jail interface](docs/reference/jail-interface.md) — sandbox backend contract
+- [Source interface](docs/reference/source-interface.md) — work-item source abstraction
 
-```toml
-[jail]
-backend = "systemd-run"    # default, only backend currently
+### [Explanation](docs/explanation/)
 
-[github]
-project-id = "10"                              # GitHub project number
-status-field-id = "PVTSSF_..."                 # Status field ID
-in-progress-option-id = "f75ad846"             # "In Progress" option ID
-in-review-option-id = "47fc9ee4"               # "In Review" option ID
-```
-
-To find your project field IDs:
-
-```bash
-# List fields — look for "Status" and note its ID (PVTSSF_...)
-gh project field-list 10 --owner @me
-
-# List option IDs for each status column
-gh project field-list 10 --owner @me --format json | jq '.fields[] | select(.name=="Status")'
-```
-
-The output gives you `id` for the status field, and each option's `id` for
-"In Progress" and "In Review".
-
-### Environment
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."   # optional — for API key auth
-```
-
-If `ANTHROPIC_API_KEY` is not set, the agent authenticates via `~/.claude/` (Claude Code subscription auth).
-
-## Usage
-
-### Full Pipeline
-
-```bash
-# Workspace → agent → PR (the common case)
-hive run ivy/dotfiles#143
-
-# Skip PR creation (review the workspace first)
-hive run --no-publish ivy/dotfiles#143
-```
-
-### Manual Stages
-
-Each stage is independently invocable and re-entrant:
-
-```bash
-# Create workspace from issue
-hive prepare ivy/dotfiles#143
-
-# Launch agent in sandboxed workspace
-hive exec /tmp/hive/dotfiles-143-1738900000
-
-# Push branch and open PR
-hive publish /tmp/hive/dotfiles-143-1738900000
-```
-
-### Resume With Feedback
-
-```bash
-# Re-run agent with reviewer feedback
-hive exec --resume "fix the test assertion" /tmp/hive/dotfiles-143-1738900000
-```
-
-### Polling
-
-```bash
-# Find Ready items on the board and dispatch runs
-hive poll
-```
-
-Requires `github.project-id` in `.hive.toml`. Designed to run on a systemd
-timer.
-
-### Inspect and Manage
-
-```bash
-# List all workspaces
-hive list
-
-# Attach to running agent's tmux session
-hive attach dotfiles-143
-
-# Clean up a workspace
-hive cleanup dotfiles-143
-
-# Clean up all workspaces
-hive cleanup --all
-```
-
-### Global Flags
-
-```
---config    config file path (default: .hive.toml in current dir)
---verbose   enable debug logging
-```
-
-## Workspace Layout
-
-Each workspace is a git worktree with `.hive/` metadata:
-
-```
-/tmp/hive/<project>-<issue>-<timestamp>/
-├── .hive/
-│   ├── repo              # e.g. "ivy/dotfiles"
-│   ├── issue-number      # e.g. "143"
-│   ├── session-id        # Claude session UUID
-│   ├── status            # prepared|running|stopped|published|failed
-│   ├── issue.json        # full issue payload
-│   ├── prompt.md         # issue body as agent prompt
-│   ├── board-item-id     # project board item ID (if from poll)
-│   └── tmux-session      # tmux session name (if attached)
-└── <repo contents>
-```
-
-The workspace directory is the contract between stages. If a stage crashes,
-re-run it against the same workspace.
-
-## Sandboxing
-
-Agents run inside `systemd-run --user --pty` with:
-
-- `ProtectSystem=strict` — system paths read-only
-- `TemporaryFileSystem=$HOME` — fresh home directory
-- `PrivateTmp=yes` — isolated `/tmp`
-- `NoNewPrivileges=yes` — no privilege escalation
-
-The agent gets:
-
-| Mount | Access | Purpose |
-|-------|--------|---------|
-| Worktree | read-write | Edit, test, commit |
-| Repo `.git` | read-write | Git operations |
-| `~/.claude` | read-write | Session persistence |
-| `~/.local/bin` | read-only | Tool binaries |
-| `~/.local/share/mise` | read-only | mise installs + shims |
-| `~/.local/share/claude` | read-only | Claude binary |
-
-The agent **cannot** access SSH keys, GitHub tokens, 1Password, or other repos.
+- [Vision](docs/vision.md) — why this project exists
+- [Architecture](docs/architecture.md) — component design, data flow, trust boundaries
+- [Core principles](docs/core-principles.md) — 6 decision filters
+- [Security model](docs/explanation/security-model.md) — isolation, credential boundaries, threat model
+- [ADRs](docs/adrs/) — architecture decision records
 
 ## Development
 
 ```bash
 go test ./...       # run all specs (Ginkgo BDD)
 go vet ./...        # static analysis
-go build ./...      # build
+make build          # build binary
+make install        # install to ~/.local/bin
+make install-units  # install systemd unit templates
 ```
 
-Tests use [Ginkgo/Gomega](https://onsi.github.io/ginkgo/) BDD style. Specs
-double as living requirements documentation.
-
-## Architecture
-
-See `docs/` for detailed design:
-
-- [`docs/vision.md`](docs/vision.md) — why this project exists
-- [`docs/core-principles.md`](docs/core-principles.md) — 6 decision filters
-- [`docs/architecture.md`](docs/architecture.md) — component design and data flow
-- [`docs/adrs/`](docs/adrs/) — architecture decision records
+Tests use [Ginkgo/Gomega](https://onsi.github.io/ginkgo/) BDD style. Pre-commit hooks managed by [hk](https://github.com/jdx/hk). Tool versions managed by [mise](https://mise.jdx.dev/) — see `mise.toml`.
