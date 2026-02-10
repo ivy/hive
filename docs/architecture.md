@@ -12,6 +12,8 @@
 
 `hive run` orchestrates ②③④ in sequence. `hive poll` dispatches `hive run` as systemd units for each Ready item. `hive reap` runs on a timer to handle cleanup and failure recovery.
 
+Each stage is independently invocable because each communicates through the filesystem, not in-memory state. This decomposition exists so that any stage can crash and be re-run without starting over — the workspace is the recovery point. See [Core Principles](core-principles.md) (Principle 1: Workspace as Contract, Principle 5: Resumability).
+
 ## Components
 
 ```
@@ -50,27 +52,31 @@
 
 ### session
 
-Session metadata stored as JSON at `~/.local/share/hive/sessions/{uuid}.json`. Lives outside the workspace — agent-inaccessible. Tracks status lifecycle: `dispatching` → `prepared` → `running` → `stopped` → `published`/`failed`.
+Session metadata stored as JSON at `~/.local/share/hive/sessions/{uuid}.json`. Lives outside the workspace — agent-inaccessible. This separation is deliberate: session files contain source-specific identifiers (board item IDs, project node IDs) that would be dangerous or confusing inside the agent's sandbox. Tracks status lifecycle: `dispatching` → `prepared` → `running` → `stopped` → `published`/`failed`. See [Lifecycle](lifecycle.md) for status transitions and crash recovery.
 
 ### claim
 
-Atomic claim files for work-item dedup at `~/.local/share/hive/claims/`. Filename is truncated SHA-256 of the source ref. Created with `O_EXCL` for race-free dedup. One file per active work item.
+Atomic claim files for work-item dedup at `~/.local/share/hive/claims/`. Filename is truncated SHA-256 of the source ref. Created with `O_EXCL` for race-free dedup. One file per active work item. Claims exist because poll is stateless between restarts — all dispatch state must survive on disk.
 
 ### source
 
-Abstraction for where work items come from. Interface: `Ready()`, `Take()`, `Complete()`, `Release()`. Same pattern as the swappable jail interface. GitHub Projects is the initial adapter (`internal/source/ghprojects`).
+Abstraction for where work items come from. Interface: `Ready()`, `Take()`, `Complete()`, `Release()`. Same pattern as the swappable jail interface — hive core never imports source-specific packages. GitHub Projects is the initial adapter (`internal/source/ghprojects`). The interface accommodates any source that can answer "what's ready?" and accept status updates. See [ADR 001](adrs/001-swappable-jail-backends.md) for the swappable-interface pattern.
 
 ### workspace
 
-Creates and manages git worktrees and the `.hive/` metadata directory at `~/.local/share/hive/workspaces/{uuid}/`. Pure local git operations. No network access, no credentials.
+Creates and manages git worktrees and the `.hive/` metadata directory at `~/.local/share/hive/workspaces/{uuid}/`. Pure local git operations. No network access, no credentials. The workspace is the contract between pipeline stages — `prepare` writes it, `exec` runs inside it, `publish` reads from it.
 
 ### jail
 
-The execution environment. Provides credential isolation and filesystem sandboxing. The interface is: "run this command in this workspace with these constraints." The implementation is swappable — `systemd-run`, Podman, `unshare`, or something else. The rest of Hive doesn't care which.
+The execution environment. Provides credential isolation and filesystem sandboxing. The interface is: "run this command in this workspace with these constraints." The implementation is swappable — `systemd-run`, Podman, `unshare`, or something else. The rest of Hive doesn't care which. Backend selection is per-repo via configuration because different repos have different parity targets (host tools vs. container images). See [Security Model](explanation/security-model.md) for isolation details, [ADR 001](adrs/001-swappable-jail-backends.md) for the backend decision.
 
 ### github
 
-All GitHub API interactions. Board status changes, issue fetching, PR creation, branch pushing. This is the only module with GitHub credentials. Uses `gh` CLI.
+All GitHub API interactions. Board status changes, issue fetching, PR creation, branch pushing. This is the only module with GitHub credentials. Uses `gh` CLI via `os/exec`. Concentrating GitHub access here means the credential boundary is a module boundary, not a runtime enforcement — but the jail's mount namespacing enforces it at runtime too.
+
+### authz
+
+Issue author authorization. Checks whether an issue's author is in the configured allowlist before any agent work begins. Fail-closed: an empty allowlist means no issues are processed.
 
 ## Trust Boundaries
 
@@ -82,7 +88,20 @@ All GitHub API interactions. Board status changes, issue fetching, PR creation, 
 | publish   | Write (push, PR, board) | Read (branch)          | No             |
 | reap      | Write (release items)   | Yes (remove worktree)  | No             |
 
-The agent inside `exec` can edit, test, and commit — but cannot push, open PRs, or interact with GitHub. The `publish` command runs outside the jail with GitHub credentials. Session metadata is outside the workspace — the agent cannot read or modify dispatch state.
+The agent inside `exec` can edit, test, and commit — but cannot push, open PRs, or interact with GitHub. The `publish` command runs outside the jail with GitHub credentials. Session metadata is outside the workspace — the agent cannot read or modify dispatch state. See [Security Model](explanation/security-model.md) for the full threat model and isolation mechanisms.
+
+## Data Flow
+
+```
+Source (e.g. GitHub Projects)  Hive                          Agent (Claude Code)
+─────────────────────────────  ────                          ───────────────────
+Ready item  ──poll──→  claim + session + systemd dispatch
+                       run: prepare → worktree + metadata
+                            exec ──────────────→  edit, test, commit
+                            publish ← result
+In Review ←──────────  push branch, open PR
+                       reap: cleanup expired sessions, recover stuck items
+```
 
 ## Data Layout
 
@@ -108,41 +127,6 @@ All hive data lives under `~/.local/share/hive/` (respects `XDG_DATA_HOME`). Wor
             └── status
 ```
 
-### Session status lifecycle
-
-```
-dispatching → prepared → running → stopped → published
-                                      │          │
-                                      └→ failed ←┘
-```
-
-| Status | Set by | Meaning |
-|--------|--------|---------|
-| `dispatching` | poll | Session created, unit not yet started |
-| `prepared` | run (prepare) | Workspace created, agent not started |
-| `running` | run (exec) | Agent is executing |
-| `stopped` | run (exec) | Agent exited |
-| `published` | run (publish) | Branch pushed, PR opened, source notified |
-| `failed` | run or reap | A stage failed or session detected as stuck |
-
-## Dispatch: Poll Loop
-
-```
-hive poll --interval 5m:
-  loop every interval (or once if no interval):
-    items = source.Ready()
-    for item in items:
-      if at max-concurrent: skip remaining
-      claim.TryClaim(item.ref, uuid)    # atomic, skip if already claimed
-      session.Create(uuid, item)        # write session JSON
-      systemctl --user start hive-run@{uuid}
-      source.Take(item.ref)             # mark taken on board
-```
-
-Poll is stateless between restarts — all dispatch state is on disk (claims, sessions). It doesn't know about workspaces, jails, or Claude.
-
-With `--interval` (or `poll.interval` in config), poll runs as a long-lived daemon — polling immediately, then on each tick. Without it, poll runs once and exits (for use with external schedulers). Runs as `hive-poll@<instance>.service`.
-
 ## Repo Discovery
 
 Repos are found on disk by convention:
@@ -152,35 +136,3 @@ Repos are found on disk by convention:
 ```
 
 An issue on `ivy/dotfiles#132` maps to `~/src/github.com/ivy/dotfiles/`. No configuration needed. If the repo isn't on disk, `prepare` clones it.
-
-## CLI Examples
-
-```bash
-# Full pipeline: workspace → agent → PR (manual path)
-hive run ivy/dotfiles#132
-
-# Run from session UUID (systemd-dispatched path)
-hive run 00112233-4455-6677-8899-aabbccddeeff
-
-# Skip PR creation (I'll review first)
-hive run --no-publish ivy/dotfiles#132
-
-# List all sessions
-hive ls
-
-# Open shell in a session's workspace
-hive cd ivy/dotfiles#132
-hive cd 00112233-4455-6677-8899-aabbccddeeff
-
-# Inspect running agent
-hive attach ivy/dotfiles#132
-
-# Poll once (single-shot)
-hive poll
-
-# Poll as daemon
-hive poll --interval 5m
-
-# Clean up expired sessions and recover stuck items
-hive reap
-```
