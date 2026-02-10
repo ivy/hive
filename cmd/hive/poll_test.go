@@ -83,6 +83,23 @@ var _ = Describe("pollOnce", func() {
 			Expect(err).To(MatchError(ContainSubstring("github.project-id not configured")))
 		})
 	})
+
+	Context("when project-node-id is not configured", func() {
+		It("returns a configuration error", func() {
+			viper.Set("github.project-id", "26")
+			err := pollOnce(context.Background())
+			Expect(err).To(MatchError(ContainSubstring("github.project-node-id not configured")))
+		})
+	})
+
+	Context("when allowed-users is not configured", func() {
+		It("returns a configuration error", func() {
+			viper.Set("github.project-id", "26")
+			viper.Set("github.project-node-id", "PVT_test")
+			err := pollOnce(context.Background())
+			Expect(err).To(MatchError(ContainSubstring("security.allowed-users not configured")))
+		})
+	})
 })
 
 var _ = Describe("poll --interval flag", func() {
