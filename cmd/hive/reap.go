@@ -36,6 +36,35 @@ func runReap(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dataDir := session.DataDir()
 
+	// Build source for releasing stale items back to the board.
+	src, srcErr := buildSource()
+	if srcErr != nil {
+		slog.Warn("could not build source — stale items won't be released on the board", "error", srcErr)
+	}
+
+	deps := reapDeps{
+		isUnitActive: isUnitActive,
+		releaseOnSource: func(ctx context.Context, sess *session.Session) {
+			releaseOnSource(ctx, src, sess)
+		},
+		removeWorkspace: defaultRemoveWorkspace,
+	}
+
+	return reapSessions(ctx, dataDir,
+		viper.GetDuration("reap.published-retention"),
+		viper.GetDuration("reap.failed-retention"),
+		deps)
+}
+
+// reapDeps holds injectable dependencies for testability.
+type reapDeps struct {
+	isUnitActive    func(ctx context.Context, id string) bool
+	releaseOnSource func(ctx context.Context, sess *session.Session)
+	removeWorkspace func(ctx context.Context, sessID string)
+}
+
+// reapSessions processes all sessions for cleanup/recovery.
+func reapSessions(ctx context.Context, dataDir string, publishedRetention, failedRetention time.Duration, deps reapDeps) error {
 	sessions, err := session.ListAll(dataDir)
 	if err != nil {
 		return fmt.Errorf("listing sessions: %w", err)
@@ -46,34 +75,26 @@ func runReap(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	// Build source for releasing stale items back to the board.
-	src, srcErr := buildSource()
-	if srcErr != nil {
-		slog.Warn("could not build source — stale items won't be released on the board", "error", srcErr)
-	}
-
-	publishedRetention := viper.GetDuration("reap.published-retention")
-	failedRetention := viper.GetDuration("reap.failed-retention")
 	now := time.Now().UTC()
 
 	for _, sess := range sessions {
 		switch sess.Status {
 		case session.StatusPublished:
 			if now.Sub(sess.CreatedAt) > publishedRetention {
-				reapSession(ctx, dataDir, sess)
+				reapExpiredSession(ctx, dataDir, sess, deps)
 			}
 		case session.StatusFailed:
 			if now.Sub(sess.CreatedAt) > failedRetention {
-				reapSession(ctx, dataDir, sess)
+				reapExpiredSession(ctx, dataDir, sess, deps)
 			}
 		default:
 			// Non-terminal — check if the systemd unit is still active.
-			if !isUnitActive(ctx, sess.ID) {
+			if !deps.isUnitActive(ctx, sess.ID) {
 				slog.Info("stale session detected", "id", sess.ID, "ref", sess.Ref, "status", sess.Status)
 				if err := session.SetStatus(dataDir, sess.ID, session.StatusFailed); err != nil {
 					slog.Error("failed to mark session as failed", "id", sess.ID, "error", err)
 				}
-				releaseOnSource(ctx, src, sess)
+				deps.releaseOnSource(ctx, sess)
 				if err := claim.Release(dataDir, sess.Ref); err != nil {
 					slog.Error("failed to release claim", "ref", sess.Ref, "error", err)
 				}
@@ -84,27 +105,29 @@ func runReap(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// reapSession removes the workspace, session file, and claim for a terminal session.
-func reapSession(ctx context.Context, dataDir string, sess *session.Session) {
+// reapExpiredSession removes the workspace, session file, and claim for a terminal session.
+func reapExpiredSession(ctx context.Context, dataDir string, sess *session.Session, deps reapDeps) {
 	slog.Info("reaping session", "id", sess.ID, "ref", sess.Ref, "status", sess.Status)
 
-	// Remove workspace if it exists.
-	wsPath := filepath.Join(workspace.BaseDir(), sess.ID)
-	ws, err := workspace.Load(ctx, wsPath)
-	if err == nil {
-		if err := workspace.Remove(ctx, ws); err != nil {
-			slog.Error("failed to remove workspace", "id", sess.ID, "error", err)
-		}
-	}
+	deps.removeWorkspace(ctx, sess.ID)
 
-	// Remove session file.
 	if err := session.Remove(dataDir, sess.ID); err != nil {
 		slog.Error("failed to remove session", "id", sess.ID, "error", err)
 	}
 
-	// Release claim (idempotent).
 	if err := claim.Release(dataDir, sess.Ref); err != nil {
 		slog.Error("failed to release claim", "ref", sess.Ref, "error", err)
+	}
+}
+
+// defaultRemoveWorkspace loads and removes a workspace via git worktree operations.
+func defaultRemoveWorkspace(ctx context.Context, sessID string) {
+	wsPath := filepath.Join(workspace.BaseDir(), sessID)
+	ws, err := workspace.Load(ctx, wsPath)
+	if err == nil {
+		if err := workspace.Remove(ctx, ws); err != nil {
+			slog.Error("failed to remove workspace", "id", sessID, "error", err)
+		}
 	}
 }
 
