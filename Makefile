@@ -1,8 +1,9 @@
 BINARY          := hive
 PREFIX          := $(HOME)/.local/bin
 SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
-VERSION         := $(shell date -u '+%Y%m%d.%H%M%S')
-LDFLAGS         := -X main.version=$(VERSION)
+VERSION         ?= dev
+BUILD_TIME      := $(shell date -u '+%Y%m%d.%H%M%S')
+LDFLAGS         := -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 
 .PHONY: build install install-units uninstall-units
 
