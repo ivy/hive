@@ -155,6 +155,9 @@ func runFromIssueRef(cmd *cobra.Command, ref string) error {
 		Status:    session.StatusDispatching,
 		CreatedAt: time.Now().UTC(),
 	}
+	if boardItemID != "" {
+		sess.SourceMetadata = map[string]string{"board_item_id": boardItemID}
+	}
 	if err := session.Create(dataDir, sess); err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}

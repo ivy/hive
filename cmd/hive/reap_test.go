@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ivy/hive/internal/claim"
 	"github.com/ivy/hive/internal/session"
+	"github.com/ivy/hive/internal/source"
 )
 
 var _ = Describe("reap command", func() {
@@ -218,5 +220,77 @@ var _ = Describe("reapSessions", func() {
 			err := reapSessions(ctx, dataDir, 24*time.Hour, 72*time.Hour, deps)
 			Expect(err).NotTo(HaveOccurred())
 		})
+	})
+})
+
+// fakeSource implements source.Source and tracks calls for testing.
+type fakeSource struct {
+	releasedRefs   []string
+	registeredRefs map[string]string // ref → boardItemID
+	releaseErr     error
+}
+
+func (f *fakeSource) Ready(_ context.Context) ([]source.WorkItem, error) { return nil, nil }
+func (f *fakeSource) Take(_ context.Context, _ string) error             { return nil }
+func (f *fakeSource) Complete(_ context.Context, _ string) error         { return nil }
+func (f *fakeSource) Release(_ context.Context, ref string) error {
+	f.releasedRefs = append(f.releasedRefs, ref)
+	return f.releaseErr
+}
+func (f *fakeSource) RegisterItem(ref, boardItemID string) {
+	if f.registeredRefs == nil {
+		f.registeredRefs = make(map[string]string)
+	}
+	f.registeredRefs[ref] = boardItemID
+}
+
+var _ = Describe("releaseOnSource", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("skips release when source is nil", func() {
+		sess := &session.Session{Ref: "github:ivy/hive#1"}
+		Expect(func() { releaseOnSource(ctx, nil, sess) }).NotTo(Panic())
+	})
+
+	It("skips release when session has no board_item_id", func() {
+		src := &fakeSource{}
+		sess := &session.Session{Ref: "github:ivy/hive#1"}
+		releaseOnSource(ctx, src, sess)
+		Expect(src.releasedRefs).To(BeEmpty())
+	})
+
+	It("skips release when board_item_id is empty string", func() {
+		src := &fakeSource{}
+		sess := &session.Session{
+			Ref:            "github:ivy/hive#1",
+			SourceMetadata: map[string]string{"board_item_id": ""},
+		}
+		releaseOnSource(ctx, src, sess)
+		Expect(src.releasedRefs).To(BeEmpty())
+	})
+
+	It("registers item and releases when board_item_id is present", func() {
+		src := &fakeSource{}
+		sess := &session.Session{
+			Ref:            "github:ivy/hive#1",
+			SourceMetadata: map[string]string{"board_item_id": "PVTI_abc123"},
+		}
+		releaseOnSource(ctx, src, sess)
+		Expect(src.registeredRefs).To(HaveKeyWithValue("github:ivy/hive#1", "PVTI_abc123"))
+		Expect(src.releasedRefs).To(ContainElement("github:ivy/hive#1"))
+	})
+
+	It("logs warning but does not panic on release error", func() {
+		src := &fakeSource{releaseErr: fmt.Errorf("API error")}
+		sess := &session.Session{
+			Ref:            "github:ivy/hive#1",
+			SourceMetadata: map[string]string{"board_item_id": "PVTI_abc123"},
+		}
+		Expect(func() { releaseOnSource(ctx, src, sess) }).NotTo(Panic())
+		Expect(src.releasedRefs).To(ContainElement("github:ivy/hive#1"))
 	})
 })
