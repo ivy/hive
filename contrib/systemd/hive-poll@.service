@@ -3,7 +3,7 @@ Description=Hive poll: %I
 PartOf=hive@%i.target
 
 [Service]
-Type=simple
+Type=notify
 ExecStart=%h/.local/bin/hive poll --config %h/.config/hive/%I.toml
 Restart=on-failure
 RestartSec=30

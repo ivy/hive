@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/google/uuid"
 	"github.com/ivy/hive/internal/authz"
 	"github.com/ivy/hive/internal/claim"
@@ -76,6 +77,7 @@ func runFromSession(cmd *cobra.Command, id string) error {
 	}
 
 	// Prepare workspace from session data
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=preparing workspace for %s", sess.Ref))
 	ws, err := prepareFromSession(cmd, sess, repo, issueNumber)
 	if err != nil {
 		_ = session.SetStatus(dataDir, id, session.StatusFailed)
@@ -95,6 +97,7 @@ func runFromSession(cmd *cobra.Command, id string) error {
 	}
 
 	// Exec
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=executing agent for %s", sess.Ref))
 	if err := session.SetStatus(dataDir, id, session.StatusRunning); err != nil {
 		return fmt.Errorf("set session status: %w", err)
 	}
@@ -114,9 +117,11 @@ func runFromSession(cmd *cobra.Command, id string) error {
 	if noPublish {
 		slog.Info("skipping publish (--no-publish)")
 		fmt.Printf("Workspace ready for review: %s\n", ws.Path)
+		_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=completed %s (no publish)", sess.Ref))
 		return nil
 	}
 
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=publishing results for %s", sess.Ref))
 	publishSourceMeta = sess.SourceMetadata
 	defer func() { publishSourceMeta = nil }()
 
@@ -129,6 +134,7 @@ func runFromSession(cmd *cobra.Command, id string) error {
 		return fmt.Errorf("set session status: %w", err)
 	}
 
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=completed %s", sess.Ref))
 	return nil
 }
 
@@ -202,6 +208,7 @@ func runFromIssueRef(cmd *cobra.Command, ref string) error {
 	}
 
 	// Prepare workspace using shared path (session UUID = workspace UUID)
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=preparing workspace for %s", sess.Ref))
 	ws, err := prepareFromSession(cmd, sess, repo, issueNumber)
 	if err != nil {
 		_ = session.SetStatus(dataDir, id, session.StatusFailed)
@@ -220,6 +227,7 @@ func runFromIssueRef(cmd *cobra.Command, ref string) error {
 	}
 
 	// Exec
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=executing agent for %s", sess.Ref))
 	if err := session.SetStatus(dataDir, id, session.StatusRunning); err != nil {
 		return fmt.Errorf("set session status: %w", err)
 	}
@@ -238,9 +246,11 @@ func runFromIssueRef(cmd *cobra.Command, ref string) error {
 	if noPublish {
 		slog.Info("skipping publish (--no-publish)")
 		fmt.Printf("Workspace ready for review: %s\n", ws.Path)
+		_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=completed %s (no publish)", sess.Ref))
 		return nil
 	}
 
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=publishing results for %s", sess.Ref))
 	if err := runPublish(cmd, []string{ws.Path}); err != nil {
 		_ = session.SetStatus(dataDir, id, session.StatusFailed)
 		return fmt.Errorf("publish: %w", err)
@@ -250,6 +260,7 @@ func runFromIssueRef(cmd *cobra.Command, ref string) error {
 		return fmt.Errorf("set session status: %w", err)
 	}
 
+	_, _ = daemon.SdNotify(false, fmt.Sprintf("STATUS=completed %s", sess.Ref))
 	return nil
 }
 
