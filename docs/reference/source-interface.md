@@ -21,7 +21,7 @@ type Source interface {
 |--------|----------|-------------|
 | `Ready` | `poll` | Returns all work items currently available for dispatch. Items are filtered by source-specific criteria (e.g. board column, author authorization). |
 | `Take` | `poll` | Marks a work item as claimed/in-progress on the source. Called after local claim and systemd unit start. |
-| `Complete` | `publish` | Marks a work item as done on the source (e.g. moves to In Review). |
+| `Complete` | — | Marks a work item as done on the source (e.g. moves to In Review). Currently unused: `publish` calls `gh.MoveToInReview()` directly instead. |
 | `Release` | `reap` | Returns a work item to the ready state on the source. Used when a session fails or is detected as stale. |
 
 ### Ref Format
