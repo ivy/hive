@@ -1,0 +1,8 @@
+[Unit]
+Description=Hive run: %I
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hive run %i
+TimeoutStartSec=infinity
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin

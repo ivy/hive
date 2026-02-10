@@ -1,0 +1,10 @@
+[Unit]
+Description=Hive poll: %I
+PartOf=hive@%i.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/hive poll --config %h/.config/hive/%I.toml
+Restart=on-failure
+RestartSec=30
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin

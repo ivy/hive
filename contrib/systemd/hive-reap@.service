@@ -1,0 +1,7 @@
+[Unit]
+Description=Hive reap: %I
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hive reap --config %h/.config/hive/%I.toml
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin
