@@ -13,12 +13,15 @@ import (
 	"github.com/spf13/viper"
 )
 
-var version = "dev"
+var (
+	version   = "dev"
+	buildTime = "unknown"
+)
 
 var rootCmd = &cobra.Command{
 	Use:     "hive",
 	Short:   "Agent orchestrator — turns GitHub issues into pull requests",
-	Version: version,
+	Version: version + " (built " + buildTime + ")",
 	Long: `Hive dispatches Claude Code agents in isolated workspaces.
 It polls a GitHub Projects board for ready items, creates git worktrees,
 runs agents inside sandboxed environments, and opens PRs with the results.`,
@@ -79,7 +82,7 @@ func setupLogger() *slog.Logger {
 
 func main() {
 	setupLogger()
-	slog.Info("starting hive", "version", version)
+	slog.Info("starting hive", "version", version, "built", buildTime)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
