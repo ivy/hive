@@ -132,8 +132,16 @@ func defaultRemoveWorkspace(ctx context.Context, sessID string) {
 }
 
 // releaseOnSource attempts to release the item on the source (best effort).
+// Sessions without a board_item_id in SourceMetadata (e.g. manual runs) are
+// skipped — there is no board item to release.
 func releaseOnSource(ctx context.Context, src source.Source, sess *session.Session) {
 	if src == nil {
+		return
+	}
+
+	boardItemID := sess.SourceMetadata["board_item_id"]
+	if boardItemID == "" {
+		slog.Debug("no board_item_id in session metadata, skipping source release", "ref", sess.Ref)
 		return
 	}
 
@@ -142,9 +150,7 @@ func releaseOnSource(ctx context.Context, src source.Source, sess *session.Sessi
 		RegisterItem(ref, boardItemID string)
 	}
 	if reg, ok := src.(itemRegistrar); ok {
-		if boardItemID, exists := sess.SourceMetadata["board_item_id"]; exists {
-			reg.RegisterItem(sess.Ref, boardItemID)
-		}
+		reg.RegisterItem(sess.Ref, boardItemID)
 	}
 
 	if err := src.Release(ctx, sess.Ref); err != nil {
