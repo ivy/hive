@@ -52,7 +52,7 @@ Each stage is independently invocable because each communicates through the file
 
 ### session
 
-Session metadata stored as JSON at `~/.local/share/hive/sessions/{uuid}.json`. Lives outside the workspace — agent-inaccessible. This separation is deliberate: session files contain source-specific identifiers (board item IDs, project node IDs) that would be dangerous or confusing inside the agent's sandbox. Tracks status lifecycle: `dispatching` → `prepared` → `running` → `stopped` → `published`/`failed`. See [Lifecycle](lifecycle.md) for status transitions and crash recovery.
+Session metadata stored as JSON at `~/.local/share/hive/sessions/{uuid}.json`. Lives outside the workspace — agent-inaccessible. This separation is deliberate: session files contain source-specific identifiers (board item IDs, project node IDs) that would be dangerous or confusing inside the agent's sandbox. Tracks status lifecycle: `dispatching` → `prepared` → `running` → `stopped` → `published`/`failed`. See [Session & Data Reference](reference/session.md) for the JSON schema and [Lifecycle](lifecycle.md) for status transitions and crash recovery.
 
 ### claim
 
@@ -60,7 +60,7 @@ Atomic claim files for work-item dedup at `~/.local/share/hive/claims/`. Filenam
 
 ### source
 
-Abstraction for where work items come from. Interface: `Ready()`, `Take()`, `Complete()`, `Release()`. Same pattern as the swappable jail interface — hive core never imports source-specific packages. GitHub Projects is the initial adapter (`internal/source/ghprojects`). The interface accommodates any source that can answer "what's ready?" and accept status updates. See [ADR 001](adrs/001-swappable-jail-backends.md) for the swappable-interface pattern.
+Abstraction for where work items come from. Interface: `Ready()`, `Take()`, `Complete()`, `Release()`. Same pattern as the swappable jail interface — hive core never imports source-specific packages. GitHub Projects is the initial adapter (`internal/source/ghprojects`). The interface accommodates any source that can answer "what's ready?" and accept status updates. See [Source Interface Reference](reference/source-interface.md) for the full API and [ADR 001](adrs/001-swappable-jail-backends.md) for the swappable-interface pattern.
 
 ### workspace
 
@@ -68,7 +68,7 @@ Creates and manages git worktrees and the `.hive/` metadata directory at `~/.loc
 
 ### jail
 
-The execution environment. Provides credential isolation and filesystem sandboxing. The interface is: "run this command in this workspace with these constraints." The implementation is swappable — `systemd-run`, Podman, `unshare`, or something else. The rest of Hive doesn't care which. Backend selection is per-repo via configuration because different repos have different parity targets (host tools vs. container images). See [Security Model](explanation/security-model.md) for isolation details, [ADR 001](adrs/001-swappable-jail-backends.md) for the backend decision.
+The execution environment. Provides credential isolation and filesystem sandboxing. The interface is: "run this command in this workspace with these constraints." The implementation is swappable — `systemd-run`, Podman, `unshare`, or something else. The rest of Hive doesn't care which. Backend selection is per-repo via configuration because different repos have different parity targets (host tools vs. container images). See [Jail Interface Reference](reference/jail-interface.md) for the full API, [Security Model](explanation/security-model.md) for isolation details, [ADR 001](adrs/001-swappable-jail-backends.md) for the backend decision.
 
 ### github
 
@@ -105,27 +105,7 @@ In Review ←──────────  push branch, open PR
 
 ## Data Layout
 
-All hive data lives under `~/.local/share/hive/` (respects `XDG_DATA_HOME`). Workspaces survive reboots.
-
-```
-~/.local/share/hive/
-├── claims/
-│   └── <hash>                  # claim file (content: session UUID)
-├── sessions/
-│   └── <uuid>.json             # session metadata (status, ref, prompt, etc.)
-└── workspaces/
-    └── <uuid>/                 # git worktree (agent's sandbox)
-        ├── <repo contents>
-        ├── .git                # → main repo's .git/worktrees/<name>
-        └── .hive/              # workspace metadata
-            ├── issue.json
-            ├── prompt.md
-            ├── session-id
-            ├── repo
-            ├── issue-number
-            ├── tmux-session
-            └── status
-```
+All hive data lives under `~/.local/share/hive/` (respects `XDG_DATA_HOME`): sessions, claims, and workspaces. For the full directory structure, JSON schema, and metadata file reference, see the [Session & Data Reference](reference/session.md).
 
 ## Repo Discovery
 

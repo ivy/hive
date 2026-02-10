@@ -52,7 +52,7 @@ The systemd-run jail (the current backend) enforces credential isolation through
 - `~/.local/share/hive/claims/` — claim files
 - Any other workspace directory — agents cannot see each other's work
 
-The `ProtectSystem=strict` directive makes the entire system filesystem read-only. Combined with the `$HOME` tmpfs overlay, this means the agent can only write to its explicitly mounted paths. Stray writes to `/etc`, `/usr`, or any system path silently fail.
+The `ProtectSystem=strict` directive makes the entire system filesystem read-only. Combined with the `$HOME` tmpfs overlay, this means the agent can only write to its explicitly mounted paths. Stray writes to `/etc`, `/usr`, or any system path are rejected with permission denied.
 
 Additional hardening:
 
