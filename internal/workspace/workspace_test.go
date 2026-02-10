@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -38,9 +39,11 @@ func initBareRepo(dir string) string {
 
 var _ = Describe("Workspace", func() {
 	var (
-		ctx      context.Context
-		tmpDir   string
-		repoPath string
+		ctx        context.Context
+		tmpDir     string
+		repoPath   string
+		origXDG    string
+		hadOrigXDG bool
 	)
 
 	BeforeEach(func() {
@@ -48,10 +51,20 @@ var _ = Describe("Workspace", func() {
 		var err error
 		tmpDir, err = os.MkdirTemp("", "hive-workspace-test-*")
 		Expect(err).NotTo(HaveOccurred())
+
+		// Isolate workspaces to temp dir via XDG_DATA_HOME.
+		origXDG, hadOrigXDG = os.LookupEnv("XDG_DATA_HOME")
+		os.Setenv("XDG_DATA_HOME", filepath.Join(tmpDir, "xdg-data"))
+
 		repoPath = initBareRepo(tmpDir)
 	})
 
 	AfterEach(func() {
+		if hadOrigXDG {
+			os.Setenv("XDG_DATA_HOME", origXDG)
+		} else {
+			os.Unsetenv("XDG_DATA_HOME")
+		}
 		os.RemoveAll(tmpDir)
 	})
 
@@ -74,21 +87,24 @@ var _ = Describe("Workspace", func() {
 
 		It("creates a worktree directory", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ws.Path).To(BeADirectory())
 		})
 
 		It("creates the .hive metadata directory", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(ws.Path, ".hive")).To(BeADirectory())
 		})
 
 		It("writes repo metadata", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
 
 			data, err := os.ReadFile(filepath.Join(ws.Path, ".hive", "repo"))
@@ -98,7 +114,8 @@ var _ = Describe("Workspace", func() {
 
 		It("writes issue-number metadata", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
 
 			data, err := os.ReadFile(filepath.Join(ws.Path, ".hive", "issue-number"))
@@ -106,20 +123,21 @@ var _ = Describe("Workspace", func() {
 			Expect(string(data)).To(Equal("132"))
 		})
 
-		It("writes a session-id as a UUID", func() {
+		It("writes the session-id matching the provided UUID", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
 
 			data, err := os.ReadFile(filepath.Join(ws.Path, ".hive", "session-id"))
 			Expect(err).NotTo(HaveOccurred())
-			// UUID format: 8-4-4-4-12 hex characters.
-			Expect(string(data)).To(MatchRegexp(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`))
+			Expect(string(data)).To(Equal(id))
 		})
 
 		It("sets initial status to prepared", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
 
 			data, err := os.ReadFile(filepath.Join(ws.Path, ".hive", "status"))
@@ -127,33 +145,36 @@ var _ = Describe("Workspace", func() {
 			Expect(string(data)).To(Equal("prepared"))
 		})
 
-		It("uses the correct branch naming convention", func() {
+		It("uses the UUID as branch suffix", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ws.Branch).To(HavePrefix("hive/dotfiles-132-"))
+			Expect(ws.Branch).To(Equal("hive/" + id))
 		})
 
-		It("puts the workspace under /tmp/hive/", func() {
+		It("puts the workspace under the XDG workspaces directory", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ws.Path).To(HavePrefix("/tmp/hive/dotfiles-132-"))
+			Expect(ws.Path).To(Equal(filepath.Join(workspace.BaseDir(), id)))
 		})
 
 		It("populates all struct fields", func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 132, id)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ws.RepoPath).To(Equal(repoPath))
 			Expect(ws.Repo).To(Equal("ivy/dotfiles"))
 			Expect(ws.IssueNumber).To(Equal(132))
-			Expect(ws.SessionID).NotTo(BeEmpty())
+			Expect(ws.SessionID).To(Equal(id))
 			Expect(ws.Status).To(Equal(workspace.StatusPrepared))
 		})
 
 		It("returns an error for a nonexistent repo path", func() {
-			_, err := workspace.Create(ctx, "/nonexistent/repo", "ivy/dotfiles", 1)
+			_, err := workspace.Create(ctx, "/nonexistent/repo", "ivy/dotfiles", 1, uuid.New().String())
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("git worktree add"))
 		})
@@ -164,7 +185,8 @@ var _ = Describe("Workspace", func() {
 
 		BeforeEach(func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 42)
+			id := uuid.New().String()
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 42, id)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -207,7 +229,7 @@ var _ = Describe("Workspace", func() {
 
 	Describe("Remove", func() {
 		It("removes the worktree directory and branch", func() {
-			ws, err := workspace.Create(ctx, repoPath, "ivy/dotfiles", 99)
+			ws, err := workspace.Create(ctx, repoPath, "ivy/dotfiles", 99, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 
 			wsPath := ws.Path
@@ -244,19 +266,17 @@ var _ = Describe("Workspace", func() {
 		})
 
 		It("returns workspaces that exist in the base directory", func() {
-			ws1, err := workspace.Create(ctx, repoPath, "ivy/dotfiles", 10)
+			ws1, err := workspace.Create(ctx, repoPath, "ivy/dotfiles", 10, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 			createdWorkspaces = append(createdWorkspaces, ws1)
 
-			ws2, err := workspace.Create(ctx, repoPath, "ivy/dotfiles", 20)
+			ws2, err := workspace.Create(ctx, repoPath, "ivy/dotfiles", 20, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 			createdWorkspaces = append(createdWorkspaces, ws2)
 
 			list, err := workspace.ListAll(ctx)
 			Expect(err).NotTo(HaveOccurred())
 
-			// There may be other workspaces in /tmp/hive from other tests,
-			// so check that at least our two are present.
 			paths := make([]string, len(list))
 			for i, ws := range list {
 				paths[i] = ws.Path
@@ -271,7 +291,7 @@ var _ = Describe("Workspace", func() {
 
 		BeforeEach(func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 50)
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 50, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -308,7 +328,7 @@ var _ = Describe("Workspace", func() {
 
 		BeforeEach(func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 60)
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 60, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -347,7 +367,7 @@ var _ = Describe("Workspace", func() {
 
 		BeforeEach(func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 70)
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 70, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -379,7 +399,7 @@ var _ = Describe("Workspace", func() {
 
 		BeforeEach(func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 90)
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 90, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -423,7 +443,7 @@ var _ = Describe("Workspace", func() {
 
 		BeforeEach(func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 91)
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 91, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -487,7 +507,7 @@ var _ = Describe("Workspace", func() {
 
 		BeforeEach(func() {
 			var err error
-			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 80)
+			ws, err = workspace.Create(ctx, repoPath, "ivy/dotfiles", 80, uuid.New().String())
 			Expect(err).NotTo(HaveOccurred())
 		})
 
