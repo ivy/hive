@@ -1,4 +1,4 @@
-# Debug a Failed Session
+# How to Debug a Failed Session
 
 Investigate why a session failed and optionally resume it.
 

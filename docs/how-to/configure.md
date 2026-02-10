@@ -1,4 +1,4 @@
-# Configure Hive
+# How to Configure Hive
 
 Set up `config.toml` to connect hive to a GitHub Projects board.
 

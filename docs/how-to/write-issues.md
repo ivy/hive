@@ -1,4 +1,4 @@
-# Write Issues That Work as Agent Prompts
+# How to Write Issues That Work as Agent Prompts
 
 GitHub issues are the primary interface between you and hive's agents. The issue body becomes the agent's prompt verbatim — what you write is what the agent reads as its instruction.
 
