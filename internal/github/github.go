@@ -27,6 +27,9 @@ type Client struct {
 
 	// InReviewOptionID is the single-select option ID for "In Review".
 	InReviewOptionID string
+
+	// ReadyOptionID is the single-select option ID for "Ready".
+	ReadyOptionID string
 }
 
 // NewClient creates a Client that uses the gh CLI on PATH.
@@ -119,6 +122,11 @@ func (c *Client) MoveToInProgress(ctx context.Context, projectID string, itemID 
 // MoveToInReview moves a board item to the "In Review" status.
 func (c *Client) MoveToInReview(ctx context.Context, projectID string, itemID string) error {
 	return c.moveItem(ctx, projectID, itemID, c.InReviewOptionID)
+}
+
+// MoveToReady moves a board item to the "Ready" status.
+func (c *Client) MoveToReady(ctx context.Context, projectID string, itemID string) error {
+	return c.moveItem(ctx, projectID, itemID, c.ReadyOptionID)
 }
 
 func (c *Client) moveItem(_ context.Context, projectID, itemID, optionID string) error {
