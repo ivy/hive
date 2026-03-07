@@ -1,6 +1,6 @@
 [tools]
 go = "1.25.7"
-hk = "1.35.0"
+hk = "1.38.0"
 editorconfig-checker = "3.6.1"
 jq = "1.8.1"
 "npm:markdownlint-cli" = "0.47.0"
