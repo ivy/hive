@@ -1,5 +1,5 @@
 [tools]
-go = "1.25.7"
+go = "1.26.2"
 hk = "1.35.0"
 editorconfig-checker = "3.6.1"
 jq = "1.8.1"
