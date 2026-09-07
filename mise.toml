@@ -1,7 +1,7 @@
 [tools]
 go = "1.25.7"
 hk = "1.58.1"
-editorconfig-checker = "3.6.1"
+editorconfig-checker = "4.0.1"
 jq = "1.8.2"
 "npm:markdownlint-cli" = "0.47.0"
 "go:golang.org/x/tools/cmd/goimports" = "0.41.0"
