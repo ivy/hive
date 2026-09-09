@@ -1,10 +1,13 @@
 # Hive
 
-Personal agent orchestrator. Turns a GitHub Projects backlog into pull requests by dispatching Claude Code agents in isolated workspaces on a home server.
+> [!IMPORTANT]
+> **This project is done.** Hive worked, but the bet underneath it — that a
+> GitHub Projects board is a good enough backlog for an agent orchestrator —
+> lost. It is unmaintained and should not be deployed.
+> See the [retrospective](docs/retrospective.md) for what the experiment
+> settled and which pieces are worth reusing.
 
-> [!CAUTION]
-> Early experiment — built for personal use on a single home server.
-> APIs, config formats, and workspace conventions will change without notice.
+Personal agent orchestrator. Turns a GitHub Projects backlog into pull requests by dispatching Claude Code agents in isolated workspaces on a home server.
 
 ## How It Works
 
